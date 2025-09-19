@@ -11,14 +11,13 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 3
+d = 2
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
 r = np.sqrt(np.random.rand(n, 1)) * 1/100 + 99/100
 u_trans = u / u_norm
-# X_tar = r * u_trans (element-wise multiplication)
 X_tar = r * u_trans
 n = X_tar.shape[0]
 
@@ -37,7 +36,10 @@ p_y = p_x.copy()
 data_kernel_norm = data_kernel / p_x[:, None] / p_y[None, :]
 D_y = np.sum(data_kernel_norm, axis=0)
 
-rw_kernel = 0.5 * (data_kernel_norm / D_y + (data_kernel_norm / D_y).T)
+# Match MATLAB: 0.5*(A ./ D_y + A ./ D_y') where D_y is a row vector.
+# First term divides columns by D_y (broadcast over last axis),
+# second term explicitly divides rows by D_y (reshape as column vector).
+rw_kernel = 0.5 * (data_kernel_norm / D_y + data_kernel_norm / D_y[:, None])
 phi, s, _ = svd(rw_kernel)
 lambda_ns = s
 lambda_ = -lambda_ns + 1
