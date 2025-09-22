@@ -11,7 +11,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 3
+d = 15
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -61,7 +61,7 @@ inv_K_ns = phi @ np.diag(lambda_ns_inv) @ phi.T
 
 # Run algorithm
 iter = 1000
-h = 5
+h = 50
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
