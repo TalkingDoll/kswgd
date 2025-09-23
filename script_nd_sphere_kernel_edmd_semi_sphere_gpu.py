@@ -98,7 +98,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 30
+d = 50
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -241,8 +241,8 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
 # Polynomial (example)
-K_xx = kernel_polynomial(X_tar, X_tar, degree=20, c=1.0)
-K_xy = kernel_polynomial(X_tar, X_tar_next, degree=20, c=1.0)
+K_xx = kernel_polynomial(X_tar, X_tar, degree=50, c=1.0)
+K_xy = kernel_polynomial(X_tar, X_tar_next, degree=50, c=1.0)
 _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
 # # Matérn ν=3/2 (example)
@@ -333,7 +333,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 15
+h = 20
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -343,7 +343,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.4, :]
+x_init = x_init[x_init[:, 1] > 0.3, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
