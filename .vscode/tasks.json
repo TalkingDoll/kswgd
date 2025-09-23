@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"type": "shell",
+			"command": "& C:/Users/xyc93/miniconda3/envs/torch/python.exe c:/Users/xyc93/Documents/dmps_koopman/script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		}
+	]
+}

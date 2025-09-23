@@ -12,7 +12,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 2
+d = 3
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -194,14 +194,14 @@ w_trunc = inv_lambda[:K_max]
 
 # Run algorithm
 iter = 1000
-h = 50
+h = 15
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
 r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
 u_trans = u / u_norm
 x_init = r * u_trans
-x_init = x_init[x_init[:, 1] > 0.7, :]
+x_init = x_init[x_init[:, 1] > 0.2, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter))
 x_t[:, :, 0] = x_init

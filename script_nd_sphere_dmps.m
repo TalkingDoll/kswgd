@@ -6,7 +6,7 @@ close all
 % 2/5*N(-3,1) + 1/5*N(0,1) + 2/5*N(4,2)
 n = 500;
 
-d = 50;
+d = 3;
 lambda = 1;
 u = normrnd(0,1,[n,d]);
 u(:,1) = lambda * u(:,1);

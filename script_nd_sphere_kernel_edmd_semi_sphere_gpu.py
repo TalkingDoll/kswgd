@@ -43,12 +43,25 @@ def _print_progress(curr: int, total: int, elapsed: float, eta: float, prefix: s
     filled = min(filled, bar_len)
     bar = ("=" * filled) + (">" if filled < bar_len else "") + ("." * max(0, bar_len - filled - (0 if filled == bar_len else 1)))
     pct = 100.0 * curr / total
-    msg = f"\r{prefix}[{bar}] {pct:5.1f}% | iter {curr}/{total} | elapsed {_fmt_secs(elapsed)} | eta {_fmt_secs(eta)}"
+    msg = f"{prefix}[{bar}] {pct:5.1f}% | iter {curr}/{total} | elapsed {_fmt_secs(elapsed)} | eta {_fmt_secs(eta)}"
+    # Clear the previous line completely, then print the new one without newline.
+    # This avoids residual characters when the new message is shorter and prevents extra lines.
+    global _LAST_PROGRESS_LEN
+    try:
+        prev = int(_LAST_PROGRESS_LEN)
+    except Exception:
+        prev = 0
+    clear = "\r" + (" " * max(0, prev)) + "\r"
+    print(clear, end="")
     print(msg, end="", flush=True)
+    _LAST_PROGRESS_LEN = len(msg)
 
 RUN_START = time.time()
 _t = time.time()
 print(f"[DEVICE] GPU {'ENABLED' if USE_GPU else 'DISABLED'}")
+
+# Track length of the last printed progress line to clear it before updating
+_LAST_PROGRESS_LEN = 0
 
 def to_xp(arr: np.ndarray):
     if USE_GPU:
@@ -65,7 +78,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 50
+d = 30
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -218,14 +231,27 @@ _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 # K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
 
-# KDMD Koopman matrix in sample space (n×n)
-# Use ridge on K_xx and build K_kernel_edmd without further normalization;
-# we'll treat it as the DMPS data_kernel downstream.
+# KDMD Koopman matrix via dual kernel-EDMD (n×n)
+# Build the dual operator: K = (Σ^+_γ Q^T) Â (Q Σ^+_γ),
+# where G = K_xx = Q Σ^2 Q^T and Â_ij = f(y_i, x_j) = K_xy^T.
 gamma_ridge = 1e-6
-K_xx_reg = K_xx + gamma_ridge * np.eye(K_xx.shape[0])
-K_kernel_edmd = np.linalg.solve(K_xx_reg, K_xy)
+G = K_xx
+A_hat = K_xy.T  # f(y, x)
+# Eigen-decomposition of symmetric PSD Gram: G = Q Λ Q^T, with Σ = sqrt(Λ)
+evals, Q = eigh(G)
+evals = np.clip(evals, 0.0, None)
+sigma = np.sqrt(evals)
+# Regularized pseudo-inverse on Σ: Σ^+_γ = diag(σ / (σ^2 + γ))
+denom = sigma**2 + gamma_ridge
+sigma_plus_gamma = np.zeros_like(sigma)
+mask = denom > 0.0
+sigma_plus_gamma[mask] = np.where(sigma[mask] > 0.0, sigma[mask] / denom[mask], 0.0)
+# Assemble (Σ^+_γ Q^T) and (Q Σ^+_γ) without forming explicit diagonals
+left = Q.T * sigma_plus_gamma[:, None]   # (Σ^+_γ Q^T)
+right = Q * sigma_plus_gamma[None, :]    # (Q Σ^+_γ)
+K_kernel_edmd = left @ A_hat @ right
 print("K_kernel_edmd shape:", K_kernel_edmd.shape)
-_t = _print_phase("Solve (K_xx+gamma I)^{-1} K_xy", _t)
+_t = _print_phase("Kernel-EDMD dual operator (Σ^+_γ Q^T Â Q Σ^+_γ)", _t)
 
 # Safety: ensure finite and nonnegative values before DMPS-style normalization
 K_kernel_edmd = np.nan_to_num(K_kernel_edmd, nan=0.0, posinf=0.0, neginf=0.0)
@@ -334,8 +360,8 @@ for t in range(iter - 1):
     elapsed = time.time() - RUN_START
     avg_iter_time = (time.time() - loop_start) / max(1, done)
     eta = avg_iter_time * (total_loop - done)
-    # Print every ~1% or every 0.5s
-    if done == total_loop or (done % max(1, total_loop // 100) == 0) or (time.time() - last_print > 0.5):
+    # Print every ~1% (and at the end) to avoid terminal spam
+    if done == total_loop or (done % max(1, total_loop // 100) == 0):
         _print_progress(done, total_loop, elapsed, eta, prefix="[LAWGD] ")
         last_print = time.time()
 
