@@ -65,7 +65,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 20
+d = 50
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -208,8 +208,8 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
 # Polynomial (example)
-K_xx = kernel_polynomial(X_tar, X_tar, degree=10, c=1.0)
-K_xy = kernel_polynomial(X_tar, X_tar_next, degree=10, c=1.0)
+K_xx = kernel_polynomial(X_tar, X_tar, degree=20, c=1.0)
+K_xy = kernel_polynomial(X_tar, X_tar_next, degree=20, c=1.0)
 _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
 # # Matérn ν=3/2 (example)
@@ -286,7 +286,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 20
+h = 15
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
