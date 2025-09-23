@@ -9,6 +9,7 @@ from K_tar_eval_gpu import K_tar_eval
 import time
 import sys
 from typing import Optional
+import os
 
 # ---------------------- GPU Config (optional) ----------------------
 USE_GPU = True  # set True to attempt GPU acceleration via CuPy (falls back to CPU if unavailable)
@@ -83,6 +84,10 @@ else:
 # Track length of the last printed progress line to clear it before updating
 _LAST_PROGRESS_LEN = 0
 
+# Figure output directory (same folder as this script)
+FIG_DIR = os.path.join(os.path.dirname(__file__), 'figure_kernel_edmd_test')
+os.makedirs(FIG_DIR, exist_ok=True)
+
 def to_xp(arr: np.ndarray):
     if USE_GPU:
         return cp.asarray(arr)
@@ -98,7 +103,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 50
+d = 100
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -165,13 +170,13 @@ X_tar_next = X_step / (np.linalg.norm(X_step, axis=1, keepdims=True) + 1e-12)
 
 # Quick visualization: X_tar vs X_tar_next (Scheme 1)
 if d == 2:
-    plt.figure()
+    fig = plt.figure()
     plt.scatter(X_tar[:, 0], X_tar[:, 1], s=10, c='C0', label='X_tar')
     plt.scatter(X_tar_next[:, 0], X_tar_next[:, 1], s=10, c='C1', label='X_tar_next')
     plt.legend()
     plt.axis('equal')
     plt.title('X_tar vs X_tar_next (Scheme 1, hemisphere)')
-    plt.show()
+    fig.savefig(os.path.join(FIG_DIR, 'quick_vis_2d.png'), dpi=200, bbox_inches='tight')
 else:
     from mpl_toolkits.mplot3d import Axes3D
     fig = plt.figure()
@@ -180,7 +185,7 @@ else:
     ax.scatter(X_tar_next[:, 0], X_tar_next[:, 1], X_tar_next[:, 2], label='X_tar_next', c='C1', s=10)
     ax.legend()
     ax.set_title('X_tar vs X_tar_next (Scheme 1, hemisphere)')
-    plt.show()
+    fig.savefig(os.path.join(FIG_DIR, 'quick_vis_3d.png'), dpi=200, bbox_inches='tight')
 _t = _print_phase("Quick visualization", _t)
 
 """
@@ -234,16 +239,16 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
 # K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 
-# # Laplacian (example)
-# med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-# ell_kedmd = np.sqrt(max(med_d2, 1e-12))
-# K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
-# K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
+# Laplacian (example)
+med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+ell_kedmd = np.sqrt(max(med_d2, 1e-12))
+K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
+K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
-# Polynomial (example)
-K_xx = kernel_polynomial(X_tar, X_tar, degree=50, c=1.0)
-K_xy = kernel_polynomial(X_tar, X_tar_next, degree=50, c=1.0)
-_t = _print_phase("KDMD Gram matrices (polynomial)", _t)
+# # Polynomial (example)
+# K_xx = kernel_polynomial(X_tar, X_tar, degree=50, c=1.0)
+# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=50, c=1.0)
+# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
 # # Matérn ν=3/2 (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
@@ -343,7 +348,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.3, :]
+x_init = x_init[x_init[:, 1] > 0.2, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
@@ -405,13 +410,13 @@ print(f"[TIMER] RUN total (pre-plot): {time.time() - RUN_START:.3f}s")
 
 # Plotting results
 if d == 2:
-    plt.figure()
+    fig = plt.figure()
     plt.plot(X_tar[:, 0], X_tar[:, 1], 'o', label='Target')
     plt.plot(x_t[:, 0, 0], x_t[:, 1, 0], 'o', label='Init')
     plt.plot(x_t[:, 0, -1], x_t[:, 1, -1], 'o', label='Final')
     plt.legend()
     plt.title('2D Results (hemisphere)')
-    plt.show()
+    fig.savefig(os.path.join(FIG_DIR, 'results_2d.png'), dpi=200, bbox_inches='tight')
 else:
     from mpl_toolkits.mplot3d import Axes3D
     fig = plt.figure()
@@ -421,14 +426,14 @@ else:
     ax.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], label='Final')
     ax.legend()
     plt.title('3D Results (hemisphere)')
-    plt.show()
+    fig.savefig(os.path.join(FIG_DIR, 'results_3d.png'), dpi=200, bbox_inches='tight')
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111, projection='3d')
     ax2.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], label='Init')
     ax2.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], label='Final')
     ax2.legend()
     plt.title('3D Final State (hemisphere)')
-    plt.show()
+    fig2.savefig(os.path.join(FIG_DIR, 'results_3d_final.png'), dpi=200, bbox_inches='tight')
 
 # Plot matrix (scatter matrix)
 pd.plotting.scatter_matrix(
@@ -439,7 +444,8 @@ pd.plotting.scatter_matrix(
     hist_kwds={'edgecolor': 'black'}
 )
 plt.suptitle('Scatter Matrix of X_tar')
-plt.show()
+fig = plt.gcf()
+fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_X_tar.png'), dpi=200, bbox_inches='tight')
 
 pd.plotting.scatter_matrix(
     pd.DataFrame(x_t[:, :, -1]),
@@ -449,4 +455,9 @@ pd.plotting.scatter_matrix(
     hist_kwds={'edgecolor': 'black'}
 )
 plt.suptitle('Scatter Matrix of x_t (final)')
+fig = plt.gcf()
+fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_x_t_final.png'), dpi=200, bbox_inches='tight')
+
+# Show once at the end (Scheme A) and print save location
+print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
 plt.show()

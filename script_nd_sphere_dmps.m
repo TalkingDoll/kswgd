@@ -6,7 +6,7 @@ close all
 % 2/5*N(-3,1) + 1/5*N(0,1) + 2/5*N(4,2)
 n = 500;
 
-d = 50;
+d = 100;
 lambda = 1;
 u = normrnd(0,1,[n,d]);
 u(:,1) = lambda * u(:,1);
@@ -89,7 +89,7 @@ r = sqrt(rand(m,1)) * 1/100 + 99/100;
 u_trans = u ./u_norm;
 % u_trans(u_trans(:,3)>0.5 && u_trans(:,3)<0.6)
 x_init = r.* u_trans;
-x_init = x_init(x_init(:,2)>0.3,:);
+x_init = x_init(x_init(:,2)>0.2,:);
 % x_init = mvnrnd([0,0],eye(2)*0.01, m);
 m = size(x_init,1);
 
@@ -167,3 +167,19 @@ end
 figure; plotmatrix(X_tar); 
 figure; plotmatrix(x_t(:,:,end))
 
+%% Save figures
+scriptFolder = fileparts(mfilename('fullpath'));
+
+saveFolder = fullfile(scriptFolder, 'figure_dmps_test');
+
+if ~exist(saveFolder, 'dir')
+    mkdir(saveFolder);
+end
+
+figHandles = findall(0, 'Type', 'figure');
+
+for k = 1:length(figHandles)
+    fig = figHandles(k);
+    filename = fullfile(saveFolder, sprintf('figure_%d.png', k));
+    saveas(fig, filename);
+end
