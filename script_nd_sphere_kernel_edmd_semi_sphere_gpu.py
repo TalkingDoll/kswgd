@@ -4,14 +4,14 @@ from scipy.linalg import svd
 from scipy.linalg import eigh
 import matplotlib.pyplot as plt
 import pandas as pd
-from grad_ker1 import grad_ker1
-from K_tar_eval import K_tar_eval
+from grad_ker1_gpu import grad_ker1
+from K_tar_eval_gpu import K_tar_eval
 import time
 import sys
 from typing import Optional
 
 # ---------------------- GPU Config (optional) ----------------------
-USE_GPU = False  # set True to attempt GPU acceleration via CuPy (falls back to CPU if unavailable)
+USE_GPU = True  # set True to attempt GPU acceleration via CuPy (falls back to CPU if unavailable)
 try:
     import cupy as cp  # type: ignore
     GPU_AVAILABLE = True
@@ -32,7 +32,16 @@ def _fmt_secs(s: float) -> str:
 
 def _print_phase(name: str, t_start: float) -> float:
     dt = time.time() - t_start
-    print(f"[TIMER] {name}: {dt:.3f}s")
+    SUPPRESS_TIMERS = {
+        "Quick visualization",
+        "Kernel-EDMD dual operator (Σ^+_γ Q^T Â Q Σ^+_γ)",
+        "DMPS-style normalization (density + symmetric RW)",
+        "SVD on rw_kernel",
+        "Green weights setup (drop constant)",
+        "Spectral truncation (threshold)",
+    }
+    if name not in SUPPRESS_TIMERS:
+        print(f"[TIMER] {name}: {dt:.3f}s")
     return time.time()
 
 def _print_progress(curr: int, total: int, elapsed: float, eta: float, prefix: str = "") -> None:
@@ -58,7 +67,18 @@ def _print_progress(curr: int, total: int, elapsed: float, eta: float, prefix: s
 
 RUN_START = time.time()
 _t = time.time()
-print(f"[DEVICE] GPU {'ENABLED' if USE_GPU else 'DISABLED'}")
+if USE_GPU:
+    try:
+        dev = cp.cuda.Device()  # type: ignore
+        props = cp.cuda.runtime.getDeviceProperties(dev.id)  # type: ignore
+        name = props.get('name', '')
+        if isinstance(name, (bytes, bytearray)):
+            name = name.decode(errors='ignore')
+        print(f"[DEVICE] GPU ENABLED | id={dev.id} | {name} | CuPy {cp.__version__}")  # type: ignore
+    except Exception:
+        print("[DEVICE] GPU ENABLED (device info unavailable)")
+else:
+    print("[DEVICE] GPU DISABLED")
 
 # Track length of the last printed progress line to clear it before updating
 _LAST_PROGRESS_LEN = 0
@@ -300,15 +320,16 @@ keep_idx = np.where(keep_mask)[0]
 if keep_idx.size == 0:
     # Fallback to keep at least the first mode (it will be zero-weighted anyway)
     keep_idx = np.array([0], dtype=int)
-phi_trunc = phi[:, keep_idx]
-w_trunc = inv_lambda[keep_idx]
+phi_trunc = phi[:, keep_idx].astype(np.float32, copy=False)
+w_trunc = inv_lambda[keep_idx].astype(np.float32, copy=False)
 print(f"Kept spectral modes: {phi_trunc.shape[1]} of {phi.shape[1]} (tol={tol})")
 _t = _print_phase("Spectral truncation (threshold)", _t)
 
-# Move spectral components to GPU if enabled
+xp = np
 if USE_GPU:
     phi_trunc_gpu = cp.asarray(phi_trunc)
     w_trunc_gpu = cp.asarray(w_trunc)
+    xp = cp
 
 # Run algorithm
 iter = 1000
@@ -324,37 +345,47 @@ u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
 x_init = x_init[x_init[:, 1] > 0.2, :]
 m = x_init.shape[0]
-x_t = np.zeros((m, d, iter))
-x_t[:, :, 0] = x_init
+x_t = np.zeros((m, d, iter), dtype=np.float32)
+x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
 _t = _print_phase("LAWGD init (particles & buffers)", _t)
 
-p_tar = np.sum(data_kernel, axis=0)
-D = np.sum(data_kernel / np.sqrt(p_tar) / np.sqrt(p_tar)[:, None], axis=1)
+p_tar = np.sum(data_kernel, axis=0).astype(np.float32, copy=False)
+D = np.sum(data_kernel / np.sqrt(p_tar) / np.sqrt(p_tar)[:, None], axis=1).astype(np.float32, copy=False)
 
 sum_x = np.zeros((m, d))
+
+# If using GPU, stage constants and state on GPU once to avoid repeated transfers
+if USE_GPU:
+    X_tar_xp = cp.asarray(X_tar.astype(np.float32, copy=False))
+    p_tar_xp = cp.asarray(p_tar.astype(np.float32, copy=False))
+    sq_tar_xp = cp.asarray(sq_tar.astype(np.float32, copy=False))
+    D_xp = cp.asarray(D.astype(np.float32, copy=False))
+    x_t_gpu = cp.asarray(x_t)
 
 # ---------------------- Iteration Loop with Progress Bar ----------------------
 loop_start = time.time()
 total_loop = max(1, iter - 1)
 last_print = 0.0
 for t in range(iter - 1):
-    grad_matrix = grad_ker1(x_t[:, :, t], X_tar, p_tar, sq_tar, D, epsilon_kern)
-    cross_matrix = K_tar_eval(X_tar, x_t[:, :, t], p_tar, sq_tar, D, epsilon_kern)
-    # Apply low-rank Green once: M = phi * diag(w) * (phi^T @ cross)
+    # Use xp-aware functions: when USE_GPU, these run on CuPy and stay on GPU.
     if USE_GPU:
-        cross_gpu = cp.asarray(cross_matrix)
-        tmp = phi_trunc_gpu.T @ cross_gpu            # (k x n) @ (n x m) -> (k x m)
-        tmp = (w_trunc_gpu[:, None]) * tmp           # (k x 1) .* (k x m)
-        M_gpu = phi_trunc_gpu @ tmp                  # (n x k) @ (k x m) -> (n x m)
-        M = cp.asnumpy(M_gpu)
+        x_t_slice = x_t_gpu[:, :, t]
+        grad_matrix = grad_ker1(x_t_slice, X_tar_xp, p_tar_xp, sq_tar_xp, D_xp, epsilon_kern)  # (m,n,d)
+        cross_matrix = K_tar_eval(X_tar_xp, x_t_slice, p_tar_xp, sq_tar_xp, D_xp, epsilon_kern)  # (n,m)
+        tmp = phi_trunc_gpu.T @ cross_matrix           # (k x m)
+        tmp = (w_trunc_gpu[:, None]) * tmp             # (k x m)
+        M = phi_trunc_gpu @ tmp                        # (n x m)
+        sum_x_gpu = cp.einsum('mnd,nm->md', grad_matrix, M)
+        x_t_gpu[:, :, t + 1] = x_t_slice - (h / m) * sum_x_gpu
     else:
-        tmp = phi_trunc.T @ cross_matrix             # (k x n) @ (n x m)
-        tmp = (w_trunc[:, None]) * tmp               # (k x m)
-        M = phi_trunc @ tmp                          # (n x m)
-    for i in range(d):
-        # sum over target samples dimension using precomputed M
-        sum_x[:, i] = np.sum(grad_matrix[:, :, i] @ M, axis=1)
-    x_t[:, :, t + 1] = x_t[:, :, t] - h / m * sum_x
+        x_t_slice = x_t[:, :, t]
+        grad_matrix = grad_ker1(x_t_slice, X_tar, p_tar, sq_tar, D, epsilon_kern)
+        cross_matrix = K_tar_eval(X_tar, x_t_slice, p_tar, sq_tar, D, epsilon_kern)
+        tmp = (phi_trunc.T @ cross_matrix)
+        tmp = (w_trunc[:, None]) * tmp
+        M = phi_trunc @ tmp
+        sum_x = np.einsum('mnd,nm->md', grad_matrix, M)
+        x_t[:, :, t + 1] = x_t[:, :, t] - (h / m) * sum_x
     # Progress bar update (throttled)
     done = t + 1
     elapsed = time.time() - RUN_START
@@ -367,6 +398,9 @@ for t in range(iter - 1):
 
 # Ensure the progress line ends cleanly
 print()
+if USE_GPU:
+    # Bring back to host for plotting
+    x_t = cp.asnumpy(x_t_gpu)
 print(f"[TIMER] RUN total (pre-plot): {time.time() - RUN_START:.3f}s")
 
 # Plotting results

@@ -9,6 +9,33 @@
 				"$eslint-stylish"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Run script with device print",
+			"type": "shell",
+			"command": "& C:/Users/xyc93/miniconda3/envs/torch/python.exe c:/Users/xyc93/Documents/dmps_koopman/script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"group": "build"
+		},
+		{
+			"label": "Run optimized GPU path",
+			"type": "shell",
+			"command": "& C:/Users/xyc93/miniconda3/envs/torch/python.exe c:/Users/xyc93/Documents/dmps_koopman/script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Run optimized GPU loop",
+			"type": "shell",
+			"command": "& C:/Users/xyc93/miniconda3/envs/torch/python.exe c:/Users/xyc93/Documents/dmps_koopman/script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Run float32 optimized GPU loop",
+			"type": "shell",
+			"command": "& C:/Users/xyc93/miniconda3/envs/torch/python.exe c:/Users/xyc93/Documents/dmps_koopman/script_nd_sphere_kernel_edmd_semi_sphere_gpu.py",
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
