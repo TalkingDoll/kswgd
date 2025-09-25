@@ -92,7 +92,7 @@ print(f"[DEVICE] {'GPU' if USE_GPU else 'CPU'} mode active")
 
 # ---------------- Target sample generation ----------------
 n = 500
-d = 80
+d = 100
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -330,6 +330,7 @@ try:
     var_fin = X_fin.var(axis=0)
     kl_tar_fin = _kl_diag(mu_tar, var_tar, mu_fin, var_fin)
     print(f"[KL] KL(target||final)= {kl_tar_fin:.6e}")
+    print(f"[KL] Average KL(target||final)= {kl_tar_fin/d:.6e}")
 except Exception as _e:
     print(f"[KL] Skipped (error: {_e})")
 
