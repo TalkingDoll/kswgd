@@ -151,7 +151,7 @@ n = X_tar.shape[0]
 
 # Scheme 2: Manifold (sphere) via projected Euclidean score — commented out for toggling
 # (Start from Euclidean KDE-score, then project drift and noise to the tangent space, and renormalize)
-dt_edmd = 1e-2
+dt_edmd = 0.15
 diffs_edmd = X_tar[:, None, :] - X_tar[None, :, :]
 dist2_edmd = np.sum(diffs_edmd ** 2, axis=2)
 h_edmd = np.sqrt(np.median(dist2_edmd) + 1e-12)
@@ -239,22 +239,22 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
 # K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 
-# Laplacian (example)
-med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-ell_kedmd = np.sqrt(max(med_d2, 1e-12))
-K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
-K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
-
-# # Polynomial (example)
-# K_xx = kernel_polynomial(X_tar, X_tar, degree=50, c=1.0)
-# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=50, c=1.0)
-# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
-
-# # Matérn ν=3/2 (example)
+# # Laplacian (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
 # ell_kedmd = np.sqrt(max(med_d2, 1e-12))
-# K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
-# K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
+# K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
+# K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
+
+# # Polynomial (example)
+# K_xx = kernel_polynomial(X_tar, X_tar, degree=100, c=1.0)
+# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=100, c=1.0)
+# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
+
+# Matérn ν=3/2 (example)
+med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+ell_kedmd = np.sqrt(max(med_d2, 1e-12))
+K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
+K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
 
 # KDMD Koopman matrix via dual kernel-EDMD (n×n)
 # Build the dual operator: K = (Σ^+_γ Q^T) Â (Q Σ^+_γ),
@@ -338,7 +338,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 20
+h = 25
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -348,7 +348,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.2, :]
+x_init = x_init[x_init[:, 1] > 0.25, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
@@ -408,34 +408,69 @@ if USE_GPU:
     x_t = cp.asnumpy(x_t_gpu)
 print(f"[TIMER] RUN total (pre-plot): {time.time() - RUN_START:.3f}s")
 
-# Plotting results
+#############################################
+# Plotting results with progress bar
+#############################################
+plot_total_start = time.time()
+_tp = time.time()
+
+PLOT_STEPS = []
+if d == 2:
+    PLOT_STEPS.append("main_2d")
+else:
+    PLOT_STEPS.extend(["main_3d", "main_3d_final"])
+PLOT_STEPS.extend(["scatter_X_tar", "scatter_x_t_final"])  # common scatter matrices
+_plot_last_len = 0
+
+def _print_plot_progress(k: int, total: int, label: str):
+    global _plot_last_len
+    total = max(1, total)
+    k = min(k, total)
+    frac = k / total
+    bar_len = 28
+    filled = int(bar_len * frac)
+    bar = '=' * filled + ('>' if filled < bar_len else '') + '.' * max(0, bar_len - filled - (0 if filled == bar_len else 1))
+    msg = f"[PLOT] [{bar}] {frac*100:5.1f}% | step {k}/{total} | {label}"
+    clear = "\r" + (" " * _plot_last_len) + "\r"
+    print(clear + msg, end="", flush=True)
+    _plot_last_len = len(msg)
+
+plot_step_total = len(PLOT_STEPS)
+_plot_state = {"idx": 0}
+
+def _advance(label: str):
+    _plot_state["idx"] += 1
+    _print_plot_progress(_plot_state["idx"], plot_step_total, label)
+
+# --- Main figure(s)
 if d == 2:
     fig = plt.figure()
     plt.plot(X_tar[:, 0], X_tar[:, 1], 'o', label='Target')
     plt.plot(x_t[:, 0, 0], x_t[:, 1, 0], 'o', label='Init')
     plt.plot(x_t[:, 0, -1], x_t[:, 1, -1], 'o', label='Final')
-    plt.legend()
-    plt.title('2D Results (hemisphere)')
+    plt.legend(); plt.title('2D Results (hemisphere)')
     fig.savefig(os.path.join(FIG_DIR, 'results_2d.png'), dpi=200, bbox_inches='tight')
+    _tp = _print_phase("Plot main results (2D)", _tp)
+    _advance("main_2d")
 else:
-    from mpl_toolkits.mplot3d import Axes3D
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig = plt.figure(); ax = fig.add_subplot(111, projection='3d')
     ax.scatter(X_tar[:, 0], X_tar[:, 1], X_tar[:, 2], label='Target')
     ax.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], label='Init')
     ax.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], label='Final')
-    ax.legend()
-    plt.title('3D Results (hemisphere)')
+    ax.legend(); plt.title('3D Results (hemisphere)')
     fig.savefig(os.path.join(FIG_DIR, 'results_3d.png'), dpi=200, bbox_inches='tight')
-    fig2 = plt.figure()
-    ax2 = fig2.add_subplot(111, projection='3d')
+    _tp = _print_phase("Plot main results (3D)", _tp)
+    _advance("main_3d")
+    fig2 = plt.figure(); ax2 = fig2.add_subplot(111, projection='3d')
     ax2.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], label='Init')
     ax2.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], label='Final')
-    ax2.legend()
-    plt.title('3D Final State (hemisphere)')
+    ax2.legend(); plt.title('3D Final State (hemisphere)')
     fig2.savefig(os.path.join(FIG_DIR, 'results_3d_final.png'), dpi=200, bbox_inches='tight')
+    _tp = _print_phase("Plot main results (3D final)", _tp)
+    _advance("main_3d_final")
 
-# Plot matrix (scatter matrix)
+# --- Scatter matrix X_tar
 pd.plotting.scatter_matrix(
     pd.DataFrame(X_tar),
     alpha=0.2,
@@ -446,7 +481,10 @@ pd.plotting.scatter_matrix(
 plt.suptitle('Scatter Matrix of X_tar')
 fig = plt.gcf()
 fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_X_tar.png'), dpi=200, bbox_inches='tight')
+_tp = _print_phase("Plot scatter matrix X_tar", _tp)
+_advance("scatter_X_tar")
 
+# --- Scatter matrix final x_t
 pd.plotting.scatter_matrix(
     pd.DataFrame(x_t[:, :, -1]),
     alpha=0.2,
@@ -457,7 +495,53 @@ pd.plotting.scatter_matrix(
 plt.suptitle('Scatter Matrix of x_t (final)')
 fig = plt.gcf()
 fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_x_t_final.png'), dpi=200, bbox_inches='tight')
+_tp = _print_phase("Plot scatter matrix x_t_final", _tp)
+_advance("scatter_x_t_final")
+
+# 完成后换行并打印总时间
+print()
+print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
 # Show once at the end (Scheme A) and print save location
 print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
 plt.show()
+
+# ---------------- Convergence Report (added) ----------------
+# We compute an aggregate scalar error between final particles x_t[:, :, -1] and target X_tar.
+# Components (all on host numpy arrays):
+# 1. mean_err (L1 over dimensions, normalized by d): (1/d) * sum_j |mean_f_j - mean_tar_j|
+# 2. var_rel_err (relative L1 of variances): (1/d) * sum_j |var_f_j - var_tar_j| / (var_tar_j + 1e-12)
+# 3. offdiag_leak (Frobenius off-diagonal leakage): ||(C_f)_off||_F / (||C_f||_F + 1e-12)
+# 4. radial_mean_diff: | E[||x||]_f - E[||x||]_tar | (L1 absolute difference)
+# 5. radial_var_diff: | Var(||x||)_f - Var(||x||)_tar |
+# Aggregate scalar error = sum of the above (simple L1 combination across components).
+# This provides a quick, low-cost convergence diagnostic without heavy pairwise O(n^2) kernels.
+
+try:
+    X_fin = x_t[:, :, -1]
+    # Means / variances
+    mean_tar = X_tar.mean(axis=0)
+    mean_fin = X_fin.mean(axis=0)
+    var_tar = X_tar.var(axis=0)
+    var_fin = X_fin.var(axis=0)
+    d_dim = mean_tar.shape[0]
+    mean_err = np.mean(np.abs(mean_fin - mean_tar))  # normalized L1
+    var_rel_err = np.mean(np.abs(var_fin - var_tar) / (var_tar + 1e-12))
+    # Covariance off-diagonal leakage
+    C_fin = np.cov(X_fin, rowvar=False)
+    off_mask = ~np.eye(d_dim, dtype=bool)
+    offdiag_leak = np.linalg.norm(C_fin[off_mask]) / (np.linalg.norm(C_fin) + 1e-12)
+    # Radial statistics
+    r_tar = np.linalg.norm(X_tar, axis=1)
+    r_fin = np.linalg.norm(X_fin, axis=1)
+    radial_mean_diff = abs(r_fin.mean() - r_tar.mean())
+    radial_var_diff = abs(r_fin.var() - r_tar.var())
+    aggregate_error = mean_err + var_rel_err + offdiag_leak + radial_mean_diff + radial_var_diff
+    print("[CONVERGENCE] aggregate_error=%.6e (sum of components)" % aggregate_error)
+    print("  - mean_err (L1/d): %.6e" % mean_err)
+    print("  - var_rel_err (relative L1/d): %.6e" % var_rel_err)
+    print("  - offdiag_leak (Fro norm ratio): %.6e" % offdiag_leak)
+    print("  - radial_mean_diff (abs): %.6e" % radial_mean_diff)
+    print("  - radial_var_diff (abs): %.6e" % radial_var_diff)
+except Exception as _e:
+    print(f"[CONVERGENCE] Skipped (error: {_e})")

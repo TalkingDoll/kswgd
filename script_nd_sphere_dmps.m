@@ -163,9 +163,11 @@ else
     scatter3(x_t(:,1,end), x_t(:,2, end), x_t(:,3, end),'o');
 end
 
+
 %% plot matrix
 figure; plotmatrix(X_tar); 
 figure; plotmatrix(x_t(:,:,end))
+
 
 %% Save figures
 scriptFolder = fileparts(mfilename('fullpath'));
