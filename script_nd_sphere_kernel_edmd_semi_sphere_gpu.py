@@ -103,7 +103,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 50
+d = 80
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -245,16 +245,16 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
-# # Polynomial (example)
-# K_xx = kernel_polynomial(X_tar, X_tar, degree=100, c=1.0)
-# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=100, c=1.0)
-# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
+# Polynomial (example)
+K_xx = kernel_polynomial(X_tar, X_tar, degree=100, c=1.0)
+K_xy = kernel_polynomial(X_tar, X_tar_next, degree=100, c=1.0)
+_t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
-# Matérn ν=3/2 (example)
-med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-ell_kedmd = np.sqrt(max(med_d2, 1e-12))
-K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
-K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
+# # Matérn ν=3/2 (example)
+# med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+# ell_kedmd = np.sqrt(max(med_d2, 1e-12))
+# K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
+# K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
 
 # KDMD Koopman matrix via dual kernel-EDMD (n×n)
 # Build the dual operator: K = (Σ^+_γ Q^T) Â (Q Σ^+_γ),
@@ -498,45 +498,33 @@ fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_x_t_final.png'), dpi=200, bbox
 _tp = _print_phase("Plot scatter matrix x_t_final", _tp)
 _advance("scatter_x_t_final")
 
-# 完成后换行并打印总时间
+# Finish plotting progress bar line
 print()
 print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
 # Show once at the end (Scheme A) and print save location
 print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
 
-# ---------------- Convergence Report (added, moved before plt.show for immediate visibility) ----------------
-# Definitions (all scalar components use L1 style absolute differences unless noted):
-# mean_err: (1/d) * sum_j |mean_f_j - mean_tar_j|
-# var_rel_err: (1/d) * sum_j |var_f_j - var_tar_j| / (var_tar_j + 1e-12)
-# offdiag_leak: ||(C_f)_off||_F / (||C_f||_F + 1e-12)
-# radial_mean_diff: | E[||x||]_f - E[||x||]_tar |
-# radial_var_diff: | Var(||x||)_f - Var(||x||)_tar |
-# aggregate_error: simple sum of the five components.
+# ---------------- KL Divergence Report (diagonal Gaussian approximation) ----------------
+# We approximate each distribution by a diagonal Gaussian fitted to samples.
+# For X ~ N(mu_X, diag(sigma_X^2)), Y ~ N(mu_Y, diag(sigma_Y^2)):
+#   KL(X||Y) = 0.5 * sum_j [ (sigma_X_j^2 / sigma_Y_j^2) + ((mu_Y_j - mu_X_j)^2 / sigma_Y_j^2) - 1 + log(sigma_Y_j^2 / sigma_X_j^2) ]
+# We report KL(target||final), KL(final||target) and their symmetric average.
+def _kl_diag(mu_p, var_p, mu_q, var_q):
+    var_p = np.maximum(var_p, 1e-12)
+    var_q = np.maximum(var_q, 1e-12)
+    ratio = var_p / var_q
+    diff2 = (mu_q - mu_p)**2 / var_q
+    return 0.5 * np.sum(ratio + diff2 - 1.0 + np.log(var_q / var_p))
 try:
     X_fin = x_t[:, :, -1]
-    mean_tar = X_tar.mean(axis=0)
-    mean_fin = X_fin.mean(axis=0)
+    mu_tar = X_tar.mean(axis=0)
+    mu_fin = X_fin.mean(axis=0)
     var_tar = X_tar.var(axis=0)
     var_fin = X_fin.var(axis=0)
-    d_dim = mean_tar.shape[0]
-    mean_err = np.mean(np.abs(mean_fin - mean_tar))
-    var_rel_err = np.mean(np.abs(var_fin - var_tar) / (var_tar + 1e-12))
-    C_fin = np.cov(X_fin, rowvar=False)
-    off_mask = ~np.eye(d_dim, dtype=bool)
-    offdiag_leak = np.linalg.norm(C_fin[off_mask]) / (np.linalg.norm(C_fin) + 1e-12)
-    r_tar = np.linalg.norm(X_tar, axis=1)
-    r_fin = np.linalg.norm(X_fin, axis=1)
-    radial_mean_diff = abs(r_fin.mean() - r_tar.mean())
-    radial_var_diff = abs(r_fin.var() - r_tar.var())
-    aggregate_error = mean_err + var_rel_err + offdiag_leak + radial_mean_diff + radial_var_diff
-    print("[CONVERGENCE] aggregate_error=%.6e (sum of components)" % aggregate_error)
-    print("  - mean_err (L1/d): %.6e" % mean_err)
-    print("  - var_rel_err (relative L1/d): %.6e" % var_rel_err)
-    print("  - offdiag_leak (Fro norm ratio): %.6e" % offdiag_leak)
-    print("  - radial_mean_diff (abs): %.6e" % radial_mean_diff)
-    print("  - radial_var_diff (abs): %.6e" % radial_var_diff)
+    kl_tar_fin = _kl_diag(mu_tar, var_tar, mu_fin, var_fin)
+    print(f"[KL] KL(target||final)= {kl_tar_fin:.6e}")
 except Exception as _e:
-    print(f"[CONVERGENCE] Skipped (error: {_e})")
+    print(f"[KL] Skipped (error: {_e})")
 
 plt.show()

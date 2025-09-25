@@ -92,7 +92,7 @@ print(f"[DEVICE] {'GPU' if USE_GPU else 'CPU'} mode active")
 
 # ---------------- Target sample generation ----------------
 n = 500
-d = 50
+d = 80
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -311,37 +311,26 @@ _advance("scatter_x_t_final")
 print()
 print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
-# ---------------- Convergence Report (added, moved before plt.show) ----------------
-# mean_err: (1/d) * sum_j |mean_f_j - mean_tar_j| (L1 over dimension means)
-# var_rel_err: (1/d) * sum_j |var_f_j - var_tar_j| / (var_tar_j + 1e-12) (relative L1 variance error)
-# offdiag_leak: ||(C_f)_off||_F / (||C_f||_F + 1e-12) (Frobenius norm ratio)
-# radial_mean_diff: |E[||x||]_f - E[||x||]_tar| (absolute difference)
-# radial_var_diff: |Var(||x||)_f - Var(||x||)_tar| (absolute difference)
-# aggregate_error: sum of the above five components.
+# ---------------- KL Divergence Report (diagonal Gaussian approximation) ----------------
+# We approximate target and final particle sets by diagonal Gaussians.
+# KL(P||Q) for diagonal Gaussians:
+#   KL = 0.5 * sum_j [ (var_P_j / var_Q_j) + ( (mu_Q_j - mu_P_j)^2 / var_Q_j ) - 1 + log(var_Q_j / var_P_j) ]
+# We print KL(target||final), KL(final||target), and symmetric average.
+def _kl_diag(mu_p, var_p, mu_q, var_q):
+    var_p = np.maximum(var_p, 1e-12)
+    var_q = np.maximum(var_q, 1e-12)
+    ratio = var_p / var_q
+    diff2 = (mu_q - mu_p)**2 / var_q
+    return 0.5 * np.sum(ratio + diff2 - 1.0 + np.log(var_q / var_p))
 try:
     X_fin = x_t[:, :, -1]
-    mean_tar = X_tar.mean(axis=0)
-    mean_fin = X_fin.mean(axis=0)
+    mu_tar = X_tar.mean(axis=0)
+    mu_fin = X_fin.mean(axis=0)
     var_tar = X_tar.var(axis=0)
     var_fin = X_fin.var(axis=0)
-    d_dim = mean_tar.shape[0]
-    mean_err = np.mean(np.abs(mean_fin - mean_tar))
-    var_rel_err = np.mean(np.abs(var_fin - var_tar) / (var_tar + 1e-12))
-    C_fin = np.cov(X_fin, rowvar=False)
-    off_mask = ~np.eye(d_dim, dtype=bool)
-    offdiag_leak = np.linalg.norm(C_fin[off_mask]) / (np.linalg.norm(C_fin) + 1e-12)
-    r_tar = np.linalg.norm(X_tar, axis=1)
-    r_fin = np.linalg.norm(X_fin, axis=1)
-    radial_mean_diff = abs(r_fin.mean() - r_tar.mean())
-    radial_var_diff = abs(r_fin.var() - r_tar.var())
-    aggregate_error = mean_err + var_rel_err + offdiag_leak + radial_mean_diff + radial_var_diff
-    print("[CONVERGENCE] aggregate_error=%.6e (sum of components)" % aggregate_error)
-    print("  - mean_err (L1/d): %.6e" % mean_err)
-    print("  - var_rel_err (relative L1/d): %.6e" % var_rel_err)
-    print("  - offdiag_leak (Fro norm ratio): %.6e" % offdiag_leak)
-    print("  - radial_mean_diff (abs): %.6e" % radial_mean_diff)
-    print("  - radial_var_diff (abs): %.6e" % radial_var_diff)
+    kl_tar_fin = _kl_diag(mu_tar, var_tar, mu_fin, var_fin)
+    print(f"[KL] KL(target||final)= {kl_tar_fin:.6e}")
 except Exception as _e:
-    print(f"[CONVERGENCE] Skipped (error: {_e})")
+    print(f"[KL] Skipped (error: {_e})")
 
 plt.show()
