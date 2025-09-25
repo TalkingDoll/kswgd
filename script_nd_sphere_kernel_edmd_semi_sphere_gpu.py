@@ -103,7 +103,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 100
+d = 50
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -504,34 +504,27 @@ print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
 # Show once at the end (Scheme A) and print save location
 print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
-plt.show()
 
-# ---------------- Convergence Report (added) ----------------
-# We compute an aggregate scalar error between final particles x_t[:, :, -1] and target X_tar.
-# Components (all on host numpy arrays):
-# 1. mean_err (L1 over dimensions, normalized by d): (1/d) * sum_j |mean_f_j - mean_tar_j|
-# 2. var_rel_err (relative L1 of variances): (1/d) * sum_j |var_f_j - var_tar_j| / (var_tar_j + 1e-12)
-# 3. offdiag_leak (Frobenius off-diagonal leakage): ||(C_f)_off||_F / (||C_f||_F + 1e-12)
-# 4. radial_mean_diff: | E[||x||]_f - E[||x||]_tar | (L1 absolute difference)
-# 5. radial_var_diff: | Var(||x||)_f - Var(||x||)_tar |
-# Aggregate scalar error = sum of the above (simple L1 combination across components).
-# This provides a quick, low-cost convergence diagnostic without heavy pairwise O(n^2) kernels.
-
+# ---------------- Convergence Report (added, moved before plt.show for immediate visibility) ----------------
+# Definitions (all scalar components use L1 style absolute differences unless noted):
+# mean_err: (1/d) * sum_j |mean_f_j - mean_tar_j|
+# var_rel_err: (1/d) * sum_j |var_f_j - var_tar_j| / (var_tar_j + 1e-12)
+# offdiag_leak: ||(C_f)_off||_F / (||C_f||_F + 1e-12)
+# radial_mean_diff: | E[||x||]_f - E[||x||]_tar |
+# radial_var_diff: | Var(||x||)_f - Var(||x||)_tar |
+# aggregate_error: simple sum of the five components.
 try:
     X_fin = x_t[:, :, -1]
-    # Means / variances
     mean_tar = X_tar.mean(axis=0)
     mean_fin = X_fin.mean(axis=0)
     var_tar = X_tar.var(axis=0)
     var_fin = X_fin.var(axis=0)
     d_dim = mean_tar.shape[0]
-    mean_err = np.mean(np.abs(mean_fin - mean_tar))  # normalized L1
+    mean_err = np.mean(np.abs(mean_fin - mean_tar))
     var_rel_err = np.mean(np.abs(var_fin - var_tar) / (var_tar + 1e-12))
-    # Covariance off-diagonal leakage
     C_fin = np.cov(X_fin, rowvar=False)
     off_mask = ~np.eye(d_dim, dtype=bool)
     offdiag_leak = np.linalg.norm(C_fin[off_mask]) / (np.linalg.norm(C_fin) + 1e-12)
-    # Radial statistics
     r_tar = np.linalg.norm(X_tar, axis=1)
     r_fin = np.linalg.norm(X_fin, axis=1)
     radial_mean_diff = abs(r_fin.mean() - r_tar.mean())
@@ -545,3 +538,5 @@ try:
     print("  - radial_var_diff (abs): %.6e" % radial_var_diff)
 except Exception as _e:
     print(f"[CONVERGENCE] Skipped (error: {_e})")
+
+plt.show()
