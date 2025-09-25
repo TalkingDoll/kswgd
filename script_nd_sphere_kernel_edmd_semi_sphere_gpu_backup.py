@@ -103,7 +103,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 100
+d = 500
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -245,16 +245,16 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
-# # Polynomial (example)
-# K_xx = kernel_polynomial(X_tar, X_tar, degree=100, c=1.0)
-# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=100, c=1.0)
-# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
+# Polynomial (example)
+K_xx = kernel_polynomial(X_tar, X_tar, degree=500, c=1.0)
+K_xy = kernel_polynomial(X_tar, X_tar_next, degree=500, c=1.0)
+_t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
-# Matérn ν=3/2 (example)
-med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-ell_kedmd = np.sqrt(max(med_d2, 1e-12))
-K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
-K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
+# # Matérn ν=3/2 (example)
+# med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+# ell_kedmd = np.sqrt(max(med_d2, 1e-12))
+# K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
+# K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
 
 # KDMD Koopman matrix via dual kernel-EDMD (n×n)
 # Build the dual operator: K = (Σ^+_γ Q^T) Â (Q Σ^+_γ),
@@ -319,7 +319,7 @@ if inv_lambda.size > 0:
 _t = _print_phase("Green weights setup (drop constant)", _t)
 
 # DMPS-style thresholding: drop tiny modes (like MATLAB tol=1e-6)
-tol = 1e-8
+tol = 1e-6
 keep_mask = s >= tol
 keep_idx = np.where(keep_mask)[0]
 if keep_idx.size == 0:
@@ -338,7 +338,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 25
+h = 15
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -348,7 +348,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.25, :]
+x_init = x_init[x_init[:, 1] > 0.12, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
@@ -470,38 +470,90 @@ else:
     _tp = _print_phase("Plot main results (3D final)", _tp)
     _advance("main_3d_final")
 
-# --- Scatter matrix X_tar
+#############################################
+# Select up to 10 best dimensions by per-dim KL over iterations
+#############################################
+try:
+    k_max = min(10, d)
+    # Target stats
+    mu_tar_sel = X_tar.mean(axis=0)
+    var_tar_sel = X_tar.var(axis=0)
+    var_tar_sel = np.maximum(var_tar_sel, 1e-12)
+    # History stats over iterations: shapes (iter, d)
+    mu_hist = x_t.mean(axis=0).T
+    var_hist = x_t.var(axis=0).T
+    var_hist = np.maximum(var_hist, 1e-12)
+    # Per-dim KL(target||x_t[.,t]) across time
+    # KL_j(t) = 0.5 * [ var_tar_j/var_t_j + (mu_t_j - mu_tar_j)^2 / var_t_j - 1 + log(var_t_j/var_tar_j) ]
+    ratio = var_tar_sel[None, :] / var_hist
+    diff2 = (mu_hist - mu_tar_sel[None, :])**2 / var_hist
+    kl_per_dim_hist = 0.5 * (ratio + diff2 - 1.0 + np.log(var_hist / var_tar_sel[None, :]))
+    kl_per_dim_hist = np.nan_to_num(kl_per_dim_hist, nan=np.inf, posinf=np.inf, neginf=np.inf)
+    best_kl_per_dim = np.min(kl_per_dim_hist, axis=0)
+    idx_sorted = np.argsort(best_kl_per_dim)
+    idx_sel = idx_sorted[:k_max]
+    print(f"[PLOT] Using top-{len(idx_sel)} dims by per-dim min KL over iterations: {idx_sel.tolist()}")
+except Exception as _e:
+    # Fallback: first k_max dims
+    idx_sel = np.arange(min(10, d))
+    print(f"[PLOT] Fallback selecting first {len(idx_sel)} dims (error computing KL ranks: {_e})")
+
+# --- Scatter matrix X_tar (selected dims)
 pd.plotting.scatter_matrix(
-    pd.DataFrame(X_tar),
+    pd.DataFrame(X_tar[:, idx_sel], columns=[f"dim_{j}" for j in idx_sel]),
     alpha=0.2,
     figsize=(6, 6),
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of X_tar')
+plt.suptitle(f'Scatter Matrix of X_tar (top {len(idx_sel)} dims)')
 fig = plt.gcf()
 fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_X_tar.png'), dpi=200, bbox_inches='tight')
-_tp = _print_phase("Plot scatter matrix X_tar", _tp)
+_tp = _print_phase("Plot scatter matrix X_tar (top dims)", _tp)
 _advance("scatter_X_tar")
 
-# --- Scatter matrix final x_t
+# --- Scatter matrix final x_t (selected dims)
 pd.plotting.scatter_matrix(
-    pd.DataFrame(x_t[:, :, -1]),
+    pd.DataFrame(x_t[:, idx_sel, -1], columns=[f"dim_{j}" for j in idx_sel]),
     alpha=0.2,
     figsize=(6, 6),
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of x_t (final)')
+plt.suptitle(f'Scatter Matrix of x_t (final, top {len(idx_sel)} dims)')
 fig = plt.gcf()
 fig.savefig(os.path.join(FIG_DIR, 'scatter_matrix_x_t_final.png'), dpi=200, bbox_inches='tight')
-_tp = _print_phase("Plot scatter matrix x_t_final", _tp)
+_tp = _print_phase("Plot scatter matrix x_t_final (top dims)", _tp)
 _advance("scatter_x_t_final")
 
-# 完成后换行并打印总时间
+# Finish plotting progress bar line
 print()
 print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
-# Show once at the end (Scheme A) and print save location
-print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
+# # Show once at the end (Scheme A) and print save location
+# print(f"[FIGURES] Saved all figures to: {FIG_DIR}")
+
+# ---------------- KL Divergence Report (diagonal Gaussian approximation) ----------------
+# We approximate each distribution by a diagonal Gaussian fitted to samples.
+# For X ~ N(mu_X, diag(sigma_X^2)), Y ~ N(mu_Y, diag(sigma_Y^2)):
+#   KL(X||Y) = 0.5 * sum_j [ (sigma_X_j^2 / sigma_Y_j^2) + ((mu_Y_j - mu_X_j)^2 / sigma_Y_j^2) - 1 + log(sigma_Y_j^2 / sigma_X_j^2) ]
+# We report KL(target||final), KL(final||target) and their symmetric average.
+def _kl_diag(mu_p, var_p, mu_q, var_q):
+    var_p = np.maximum(var_p, 1e-12)
+    var_q = np.maximum(var_q, 1e-12)
+    ratio = var_p / var_q
+    diff2 = (mu_q - mu_p)**2 / var_q
+    return 0.5 * np.sum(ratio + diff2 - 1.0 + np.log(var_q / var_p))
+try:
+    X_fin = x_t[:, :, -1]
+    mu_tar = X_tar.mean(axis=0)
+    mu_fin = X_fin.mean(axis=0)
+    var_tar = X_tar.var(axis=0)
+    var_fin = X_fin.var(axis=0)
+    kl_tar_fin = _kl_diag(mu_tar, var_tar, mu_fin, var_fin)
+    print(f"[KL] KL(target||final)= {kl_tar_fin:.6e}")
+    print(f"[KL] Average KL(target||final)= {kl_tar_fin/d:.6e}")
+except Exception as _e:
+    print(f"[KL] Skipped (error: {_e})")
+
 plt.show()

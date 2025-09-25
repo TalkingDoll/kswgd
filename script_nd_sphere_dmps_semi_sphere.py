@@ -21,6 +21,9 @@ else:
     from grad_ker1 import grad_ker1      # CPU fallbacks
     from K_tar_eval import K_tar_eval
 
+# Optional metric: number of random projections for Sliced Wasserstein-1 (set 0 to disable)
+SLICED_W1_NUM_PROJ = 64
+
 # ---------------- Timing / Progress Utilities (added for monitoring) ----------------
 def _fmt_secs(s: float) -> str:
     s = max(0.0, float(s))
@@ -92,7 +95,7 @@ print(f"[DEVICE] {'GPU' if USE_GPU else 'CPU'} mode active")
 
 # ---------------- Target sample generation ----------------
 n = 500
-d = 100
+d = 300
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -151,7 +154,7 @@ _t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
 
 # ---------------- Particle descent (initialization) ----------------
 iter = 1000
-h = 25
+h = 15
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -161,7 +164,7 @@ if USE_HEMISPHERE:
     u_trans = reflect_to_hemisphere(u_trans, axis_hemi)
 x_init = r * u_trans
 # Keep a spherical cap (original constraint) but now guaranteed in hemisphere if enabled.
-x_init = x_init[x_init[:, 1] > 0.25, :]
+x_init = x_init[x_init[:, 1] > 0.15, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
@@ -283,28 +286,55 @@ else:
     _tp = _print_phase("Plot main results (3D final)", _tp)
     _advance("main_3d_final")
 
-# --- Scatter matrix X_tar
+#############################################
+# Select up to 10 best dimensions by per-dim KL over iterations
+#############################################
+try:
+    k_max = min(10, d)
+    mu_tar_sel = X_tar.mean(axis=0)
+    var_tar_sel = np.maximum(X_tar.var(axis=0), 1e-12)
+    # Over time stats (iter x d)
+    mu_hist = x_t.mean(axis=0).T
+    var_hist = np.maximum(x_t.var(axis=0).T, 1e-12)
+    # KL_j(t) = 0.5 * [ var_tar_j/var_t_j + (mu_t_j - mu_tar_j)^2 / var_t_j - 1 + log(var_t_j/var_tar_j) ]
+    ratio = var_tar_sel[None, :] / var_hist
+    diff2 = (mu_hist - mu_tar_sel[None, :])**2 / var_hist
+    kl_per_dim_hist = 0.5 * (ratio + diff2 - 1.0 + np.log(var_hist / var_tar_sel[None, :]))
+    kl_per_dim_hist = np.nan_to_num(kl_per_dim_hist, nan=np.inf, posinf=np.inf, neginf=np.inf)
+    best_kl_per_dim = np.min(kl_per_dim_hist, axis=0)
+    idx_sorted = np.argsort(best_kl_per_dim)
+    idx_sel = idx_sorted[:k_max]
+    print(f"[PLOT] Using top-{len(idx_sel)} dims by per-dim min KL over iterations: {idx_sel.tolist()}")
+except Exception as _e:
+    idx_sel = np.arange(min(10, d))
+    print(f"[PLOT] Fallback selecting first {len(idx_sel)} dims (error computing KL ranks: {_e})")
+
+# --- Scatter matrix X_tar (selected dims)
 pd.plotting.scatter_matrix(
-    pd.DataFrame(X_tar),
+    pd.DataFrame(X_tar[:, idx_sel], columns=[f"dim_{j}" for j in idx_sel]),
     alpha=0.2,
     figsize=(6, 6),
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of X_tar')
-_tp = _print_phase("Plot scatter matrix X_tar", _tp)
+plt.suptitle(f'Scatter Matrix of X_tar (top {len(idx_sel)} dims)')
+fig = plt.gcf()
+fig.savefig('scatter_matrix_X_tar.png', dpi=200, bbox_inches='tight')
+_tp = _print_phase("Plot scatter matrix X_tar (top dims)", _tp)
 _advance("scatter_X_tar")
 
-# --- Scatter matrix final x_t
+# --- Scatter matrix final x_t (selected dims)
 pd.plotting.scatter_matrix(
-    pd.DataFrame(x_t[:, :, -1]),
+    pd.DataFrame(x_t[:, idx_sel, -1], columns=[f"dim_{j}" for j in idx_sel]),
     alpha=0.2,
     figsize=(6, 6),
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of x_t (final)')
-_tp = _print_phase("Plot scatter matrix x_t_final", _tp)
+plt.suptitle(f'Scatter Matrix of x_t (final, top {len(idx_sel)} dims)')
+fig = plt.gcf()
+fig.savefig('scatter_matrix_x_t_final.png', dpi=200, bbox_inches='tight')
+_tp = _print_phase("Plot scatter matrix x_t_final (top dims)", _tp)
 _advance("scatter_x_t_final")
 
 # Finish plotting progress bar line
@@ -333,5 +363,43 @@ try:
     print(f"[KL] Average KL(target||final)= {kl_tar_fin/d:.6e}")
 except Exception as _e:
     print(f"[KL] Skipped (error: {_e})")
+
+# Optional: Sliced Wasserstein-1 metric (no extra deps). Approximates W1 by averaging 1D W1 over random projections.
+def _w1_1d(x: np.ndarray, y: np.ndarray, L: int | None = None) -> float:
+    n1 = x.shape[0]; n2 = y.shape[0]
+    if L is None:
+        L = min(n1, n2)
+    u = (np.arange(L) + 0.5) / max(L, 1)
+    try:
+        qx = np.quantile(x, u, method='linear')
+        qy = np.quantile(y, u, method='linear')
+    except TypeError:
+        # Fallback for older NumPy versions
+        qx = np.quantile(x, u)
+        qy = np.quantile(y, u)
+    return float(np.mean(np.abs(qx - qy)))
+
+def sliced_wasserstein_1(X: np.ndarray, Y: np.ndarray, num_proj: int = 64, seed: int | None = None) -> float:
+    if num_proj <= 0:
+        return float('nan')
+    rng = np.random.default_rng(seed)
+    d = X.shape[1]
+    acc = 0.0
+    for _ in range(num_proj):
+        v = rng.normal(0.0, 1.0, size=(d,))
+        nv = np.linalg.norm(v) + 1e-12
+        v = v / nv
+        x_proj = X @ v
+        y_proj = Y @ v
+        acc += _w1_1d(x_proj, y_proj)
+    return acc / num_proj
+
+try:
+    if SLICED_W1_NUM_PROJ and SLICED_W1_NUM_PROJ > 0:
+        X_fin = x_t[:, :, -1]
+        sw1 = sliced_wasserstein_1(X_tar, X_fin, num_proj=SLICED_W1_NUM_PROJ, seed=0)
+        print(f"[W1] Sliced W1 (num_proj={SLICED_W1_NUM_PROJ})= {sw1:.6e}")
+except Exception as _e:
+    print(f"[W1] Skipped (error: {_e})")
 
 plt.show()
