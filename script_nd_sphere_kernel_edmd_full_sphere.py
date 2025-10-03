@@ -86,7 +86,7 @@ np.random.seed(0)
 
 # Sample 500 points from a d-dimensional Gaussian (as in the MATLAB code)
 n = 500
-d = 30
+d = 2
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d)).astype(np.float32)
 u[:, 0] = lambda_ * u[:, 0]
@@ -101,7 +101,7 @@ if USE_GPU:
 # Scheme 1: Euclidean KDE-score (Euler–Maruyama) to generate X_tar_next for EDMD
 # - Estimate score ∇log q(x) using Gaussian KDE with global bandwidth (median distance)
 # - One Euler–Maruyama step: x_next = x + Δt * score(x) + sqrt(2Δt) * ξ
-dt_edmd = 1e-2
+dt_edmd = 1e-1
 # Pairwise squared distances for bandwidth and weights (xp backend)
 diffs_edmd = X_tar[:, None, :] - X_tar[None, :, :]
 dist2_edmd = xp.sum(diffs_edmd ** 2, axis=2)
@@ -197,11 +197,11 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 
 # --- Activation: choose ONE kernel for KDMD (others commented) ---
 
-# # RBF (active): bandwidth chosen from median pairwise distance
-# med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-# sigma_kedmd = np.sqrt(max(med_d2, 1e-12))
-# K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
-# K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
+# RBF (active): bandwidth chosen from median pairwise distance
+med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+sigma_kedmd = np.sqrt(max(med_d2, 1e-12))
+K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
+K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 
 # # Laplacian (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
@@ -209,11 +209,11 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 # K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
-"""Activate chosen kernel (polynomial here) and build Gram matrices."""
-# Polynomial (example)
-K_xx = kernel_polynomial(X_tar, X_tar, degree=10, c=1.0)
-K_xy = kernel_polynomial(X_tar, X_tar_next, degree=10, c=1.0)
-_print_phase("KDMD Gram matrices (polynomial)")
+# """Activate chosen kernel (polynomial here) and build Gram matrices."""
+# # Polynomial (example)
+# K_xx = kernel_polynomial(X_tar, X_tar, degree=5, c=1.0)
+# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=5, c=1.0)
+# _print_phase("KDMD Gram matrices (polynomial)")
 
 # # Matérn ν=3/2 (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
@@ -293,14 +293,14 @@ _print_phase("Spectral truncation (threshold)")
 
 # Run algorithm
 iter = 1000
-h = 15
+h = 20
 m = 700
 u = np.random.normal(0, 1, (m, d)).astype(np.float32)
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
 r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
 u_trans = u / u_norm
 x_init = r * u_trans
-x_init = x_init[x_init[:, 1] > 0.2, :]
+x_init = x_init[x_init[:, 1] > 0.8, :]
 m = x_init.shape[0]
 x_t = xp.zeros((m, d, iter), dtype=phi_trunc.dtype)
 x_t[:, :, 0] = to_xp(x_init.astype(np.float32))

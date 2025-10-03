@@ -107,7 +107,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 300
+d = 2
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -209,7 +209,7 @@ from solver_resdmd_torch import KoopmanNNTorch, KoopmanSolverTorch  # type: igno
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # Dictionary size and NN width (kept moderate to avoid long runtime in-script)
 # dic_size = min(256, max(32, d + 16))
-dic_size = 800
+dic_size = 30
 # net_width = min(256, max(64, d // 2))
 net_width = dic_size
 basis_function = KoopmanNNTorch(input_size=d, layer_sizes=[net_width, net_width, net_width], n_psi_train=dic_size - (d + 1)).to(device)
@@ -316,7 +316,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 15
+h = 5
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -326,7 +326,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.15, :]
+x_init = x_init[x_init[:, 1] > 0.7, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)

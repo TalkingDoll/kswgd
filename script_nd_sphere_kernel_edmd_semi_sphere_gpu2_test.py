@@ -20,7 +20,6 @@ except Exception:
     cp = None  # type: ignore
     GPU_AVAILABLE = False
 USE_GPU = bool(USE_GPU and GPU_AVAILABLE)
-SLICED_W1_NUM_PROJ = 64  # set >0 to also report a sliced W1 metric (lightweight diagnostic)
 
 # ---------------------- Timing & Progress Utilities ----------------------
 def _fmt_secs(s: float) -> str:
@@ -104,7 +103,7 @@ np.random.seed(0)
 
 # Sample 500 points from a 3D Gaussian (as in the MATLAB code)
 n = 500
-d = 2
+d = 500
 lambda_ = 1
 u = np.random.normal(0, 1, (n, d))
 u[:, 0] = lambda_ * u[:, 0]
@@ -137,7 +136,6 @@ n = X_tar.shape[0]
 # # Scheme 1: Euclidean KDE-score (Euler–Maruyama) to generate X_tar_next for EDMD
 # # - Estimate score ∇log q(x) using Gaussian KDE with global bandwidth (median distance)
 # # - One Euler–Maruyama step: x_next = x + Δt * score(x) + sqrt(2Δt) * ξ
-# # WARNING: This can let X_tar_next drift outside the hemisphere, breaking the dynamics!
 # dt_edmd = 1e-2
 # # Pairwise squared distances for bandwidth and weights
 # diffs_edmd = X_tar[:, None, :] - X_tar[None, :, :]
@@ -151,10 +149,9 @@ n = X_tar.shape[0]
 # X_tar_next = X_tar + dt_edmd * score_eucl + np.sqrt(2.0 * dt_edmd) * xi_edmd
 # _t = _print_phase("EDMD Scheme 1 (KDE-score + one step)", _t)
 
-# Scheme 2: Manifold (sphere) via projected Euclidean score — ACTIVE
+# Scheme 2: Manifold (sphere) via projected Euclidean score — commented out for toggling
 # (Start from Euclidean KDE-score, then project drift and noise to the tangent space, and renormalize)
-# This keeps X_tar_next constrained to the hemisphere with constant radius.
-dt_edmd = 1e-3
+dt_edmd = 0.15
 diffs_edmd = X_tar[:, None, :] - X_tar[None, :, :]
 dist2_edmd = np.sum(diffs_edmd ** 2, axis=2)
 h_edmd = np.sqrt(np.median(dist2_edmd) + 1e-12)
@@ -170,7 +167,6 @@ xi_edmd = np.random.normal(0.0, 1.0, size=X_tar.shape)
 xi_tan = xi_edmd - (np.sum(X_norm * xi_edmd, axis=1, keepdims=True)) * X_norm
 X_step = X_norm + dt_edmd * score_tan + np.sqrt(2.0 * dt_edmd) * xi_tan
 X_tar_next = X_step / (np.linalg.norm(X_step, axis=1, keepdims=True) + 1e-12)
-_t = _print_phase("EDMD Scheme 2 (manifold-projected KDE-score)", _t)
 
 # Quick visualization: X_tar vs X_tar_next (Scheme 1)
 if d == 2:
@@ -179,7 +175,7 @@ if d == 2:
     plt.scatter(X_tar_next[:, 0], X_tar_next[:, 1], s=10, c='C1', label='X_tar_next')
     plt.legend()
     plt.axis('equal')
-    plt.title('X_tar vs X_tar_next (Scheme 2, hemisphere)')
+    plt.title('X_tar vs X_tar_next (Scheme 1, hemisphere)')
     fig.savefig(os.path.join(FIG_DIR, 'quick_vis_2d.png'), dpi=200, bbox_inches='tight')
 else:
     from mpl_toolkits.mplot3d import Axes3D
@@ -188,7 +184,7 @@ else:
     ax.scatter(X_tar[:, 0], X_tar[:, 1], X_tar[:, 2], label='X_tar', c='C0', s=10)
     ax.scatter(X_tar_next[:, 0], X_tar_next[:, 1], X_tar_next[:, 2], label='X_tar_next', c='C1', s=10)
     ax.legend()
-    ax.set_title('X_tar vs X_tar_next (Scheme 2, hemisphere)')
+    ax.set_title('X_tar vs X_tar_next (Scheme 1, hemisphere)')
     fig.savefig(os.path.join(FIG_DIR, 'quick_vis_3d.png'), dpi=200, bbox_inches='tight')
 _t = _print_phase("Quick visualization", _t)
 
@@ -237,11 +233,11 @@ def kernel_matern32(X: np.ndarray, Y: np.ndarray, ell: float) -> np.ndarray:
 
 # --- Activation: choose ONE kernel for KDMD (others commented) ---
 
-# RBF (active): bandwidth chosen from median pairwise distance
-med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
-sigma_kedmd = np.sqrt(max(med_d2, 1e-12))
-K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
-K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
+# # RBF (active): bandwidth chosen from median pairwise distance
+# med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
+# sigma_kedmd = np.sqrt(max(med_d2, 1e-12))
+# K_xx = kernel_rbf(X_tar, X_tar, sigma_kedmd)
+# K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 
 # # Laplacian (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
@@ -249,10 +245,10 @@ K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 # K_xx = kernel_laplacian(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_laplacian(X_tar, X_tar_next, ell_kedmd)
 
-# # Polynomial (example)
-# K_xx = kernel_polynomial(X_tar, X_tar, degree=3, c=1.0)
-# K_xy = kernel_polynomial(X_tar, X_tar_next, degree=3, c=1.0)
-# _t = _print_phase("KDMD Gram matrices (polynomial)", _t)
+# Polynomial (example)
+K_xx = kernel_polynomial(X_tar, X_tar, degree=500, c=1.0)
+K_xy = kernel_polynomial(X_tar, X_tar_next, degree=500, c=1.0)
+_t = _print_phase("KDMD Gram matrices (polynomial)", _t)
 
 # # Matérn ν=3/2 (example)
 # med_d2 = float(np.median(pairwise_sq_dists(X_tar, X_tar)))
@@ -260,28 +256,27 @@ K_xy = kernel_rbf(X_tar, X_tar_next, sigma_kedmd)
 # K_xx = kernel_matern32(X_tar, X_tar, ell_kedmd)
 # K_xy = kernel_matern32(X_tar, X_tar_next, ell_kedmd)
 
-# KDMD Koopman matrix via kernel-EDMD (n×n)
-# Standard formula: K_koopman = K_xy @ (K_xx + γI)^{-1}
-# This represents the finite-dimensional approximation of the Koopman operator:
-#   K̂ ≈ Ψ(X_next)^T Ψ(X_curr) [Ψ(X_curr)^T Ψ(X_curr) + γI]^{-1}
-# where K_xy = Ψ(X_curr)^T Ψ(X_next) and K_xx = Ψ(X_curr)^T Ψ(X_curr)
+# KDMD Koopman matrix via dual kernel-EDMD (n×n)
+# Build the dual operator: K = (Σ^+_γ Q^T) Â (Q Σ^+_γ),
+# where G = K_xx = Q Σ^2 Q^T and Â_ij = f(y_i, x_j) = K_xy^T.
 gamma_ridge = 1e-6
-
-# # Method 1: Direct solve (numerically stable, commented out for now)
-# # K_kernel_edmd = K_xy @ np.linalg.solve(K_xx + gamma_ridge * np.eye(n), np.eye(n))
-
-# Method 2: Eigendecomposition-based inversion (more numerically stable for ill-conditioned matrices)
-# Compute (K_xx + γI)^{-1} = Q @ diag(1/(λ + γ)) @ Q^T
-# where K_xx = Q @ diag(λ) @ Q^T
 G = K_xx
+A_hat = K_xy.T  # f(y, x)
+# Eigen-decomposition of symmetric PSD Gram: G = Q Λ Q^T, with Σ = sqrt(Λ)
 evals, Q = eigh(G)
-evals = np.clip(evals, 0.0, None)  # Ensure non-negative eigenvalues
-# Regularized inverse eigenvalues: 1 / (λ + γ)
-inv_evals = 1.0 / (evals + gamma_ridge)
-# Compute K_kernel_edmd = K_xy @ Q @ diag(inv_evals) @ Q^T
-K_kernel_edmd = K_xy @ (Q @ (np.diag(inv_evals) @ Q.T))
+evals = np.clip(evals, 0.0, None)
+sigma = np.sqrt(evals)
+# Regularized pseudo-inverse on Σ: Σ^+_γ = diag(σ / (σ^2 + γ))
+denom = sigma**2 + gamma_ridge
+sigma_plus_gamma = np.zeros_like(sigma)
+mask = denom > 0.0
+sigma_plus_gamma[mask] = np.where(sigma[mask] > 0.0, sigma[mask] / denom[mask], 0.0)
+# Assemble (Σ^+_γ Q^T) and (Q Σ^+_γ) without forming explicit diagonals
+left = Q.T * sigma_plus_gamma[:, None]   # (Σ^+_γ Q^T)
+right = Q * sigma_plus_gamma[None, :]    # (Q Σ^+_γ)
+K_kernel_edmd = left @ A_hat @ right
 print("K_kernel_edmd shape:", K_kernel_edmd.shape)
-_t = _print_phase("Kernel-EDMD Koopman operator K_xy @ (K_xx + γI)^{-1}", _t)
+_t = _print_phase("Kernel-EDMD dual operator (Σ^+_γ Q^T Â Q Σ^+_γ)", _t)
 
 # Safety: ensure finite and nonnegative values before DMPS-style normalization
 K_kernel_edmd = np.nan_to_num(K_kernel_edmd, nan=0.0, posinf=0.0, neginf=0.0)
@@ -343,7 +338,7 @@ if USE_GPU:
 
 # Run algorithm
 iter = 1000
-h = 5  # Reduced from 25 for better convergence with corrected Koopman operator
+h = 15
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
@@ -353,7 +348,7 @@ u_trans = u / u_norm
 # Fold initial directions to the same hemisphere
 u_trans_hemi = reflect_to_hemisphere(u_trans, n_axis)
 x_init = r * u_trans_hemi
-x_init = x_init[x_init[:, 1] > 0.8, :]
+x_init = x_init[x_init[:, 1] > 0.12, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float32)
 x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
@@ -560,43 +555,5 @@ try:
     print(f"[KL] Average KL(target||final)= {kl_tar_fin/d:.6e}")
 except Exception as _e:
     print(f"[KL] Skipped (error: {_e})")
-
-# Optional: Sliced Wasserstein-1 metric (no extra deps). Approximates W1 by averaging 1D W1 over random projections.
-def _w1_1d(x: np.ndarray, y: np.ndarray, L: Optional[int] = None) -> float:
-    n1 = x.shape[0]; n2 = y.shape[0]
-    if L is None:
-        L = min(n1, n2)
-    u = (np.arange(L) + 0.5) / max(L, 1)
-    try:
-        qx = np.quantile(x, u, method='linear')
-        qy = np.quantile(y, u, method='linear')
-    except TypeError:
-        # Fallback for older NumPy versions
-        qx = np.quantile(x, u)
-        qy = np.quantile(y, u)
-    return float(np.mean(np.abs(qx - qy)))
-
-def sliced_wasserstein_1(X: np.ndarray, Y: np.ndarray, num_proj: int = 64, seed: Optional[int] = None) -> float:
-    if num_proj <= 0:
-        return float('nan')
-    rng = np.random.default_rng(seed)
-    d = X.shape[1]
-    acc = 0.0
-    for _ in range(num_proj):
-        v = rng.normal(0.0, 1.0, size=(d,))
-        nv = np.linalg.norm(v) + 1e-12
-        v = v / nv
-        x_proj = X @ v
-        y_proj = Y @ v
-        acc += _w1_1d(x_proj, y_proj)
-    return acc / num_proj
-
-try:
-    if SLICED_W1_NUM_PROJ and SLICED_W1_NUM_PROJ > 0:
-        X_fin = x_t[:, :, -1]
-        sw1 = sliced_wasserstein_1(X_tar, X_fin, num_proj=SLICED_W1_NUM_PROJ, seed=0)
-        print(f"[W1] Sliced W1 (num_proj={SLICED_W1_NUM_PROJ})= {sw1:.6e}")
-except Exception as _e:
-    print(f"[W1] Skipped (error: {_e})")
 
 plt.show()

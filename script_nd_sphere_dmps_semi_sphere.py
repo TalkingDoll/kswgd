@@ -21,9 +21,6 @@ else:
     from grad_ker1 import grad_ker1      # CPU fallbacks
     from K_tar_eval import K_tar_eval
 
-# Optional metric: number of random projections for Sliced Wasserstein-1 (set 0 to disable)
-SLICED_W1_NUM_PROJ = 64
-
 # ---------------- Timing / Progress Utilities (added for monitoring) ----------------
 def _fmt_secs(s: float) -> str:
     s = max(0.0, float(s))
@@ -64,48 +61,57 @@ np.random.seed(0)
 
 """
 DMPS (Diffusion Maps style) particle descent script.
-Modified: add optional hemisphere folding so that target samples live on a semi-sphere
-just like the kernel+EDMD script (mirror full-sphere directions into a chosen half-space).
+Modified: add optional hemisphere sampling so that target samples live on a semi-sphere.
+Direct hemisphere sampling (instead of reflection) by rejecting negative-axis directions.
 Toggle via USE_HEMISPHERE. When False, behavior reverts to original full-sphere version.
 """
 
-# ---------------- Hemisphere configuration (mirrors the kernel_edmd semi-sphere script) ----------------
+# ---------------- Hemisphere configuration ----------------
 USE_HEMISPHERE = True          # set False to recover original full-sphere behavior
 axis_hemi = 1                  # keep directions with positive component along this axis
 
-def reflect_to_hemisphere(U: np.ndarray, axis: int) -> np.ndarray:
-    """Reflect points across the hyperplane x_axis = 0 so that the axis-th coordinate becomes non-negative.
-    Equivalent to folding full sphere into a hemisphere (Neumann reflection / method of images).
+def sample_hemisphere_directions(n: int, d: int, axis: int, lambda_: float = 1.0) -> np.ndarray:
+    """Directly sample unit directions on a hemisphere by rejection sampling.
     Args:
-        U: (n,d) unit (or arbitrary) direction vectors.
-        axis: integer axis index to enforce non-negative.
+        n: number of samples desired
+        d: dimension
+        axis: integer axis index to enforce positive (0-indexed)
+        lambda_: anisotropy parameter for stretching axis 0
     Returns:
-        U_ref: reflected copy with U_ref[:, axis] >= 0 (up to floating error).
+        U: (n, d) unit directions with U[:, axis] >= 0
     """
-    if axis < 0 or axis >= U.shape[1]:
-        return U
-    mask = U[:, axis] < 0
-    if not np.any(mask):
-        return U
-    U_ref = U.copy()
-    U_ref[mask, axis] *= -1.0
-    return U_ref
+    samples = []
+    while len(samples) < n:
+        # Over-sample to reduce rejection rounds
+        batch_size = max(n - len(samples), int((n - len(samples)) * 2.5))  # ~2x expected
+        u = np.random.normal(0, 1, (batch_size, d))
+        if lambda_ != 1.0:
+            u[:, 0] = lambda_ * u[:, 0]
+        u_norm = np.linalg.norm(u, axis=1, keepdims=True)
+        u_trans = u / (u_norm + 1e-12)
+        # Keep only hemisphere samples
+        valid = u_trans[:, axis] >= 0
+        samples.append(u_trans[valid, :])
+    U = np.vstack(samples)[:n, :]
+    return U
 
 print(f"[DEVICE] {'GPU' if USE_GPU else 'CPU'} mode active")
 
 # ---------------- Target sample generation ----------------
 n = 500
-d = 300
+d = 3
 lambda_ = 1
-u = np.random.normal(0, 1, (n, d))
-u[:, 0] = lambda_ * u[:, 0]
-u_norm = np.linalg.norm(u, axis=1, keepdims=True)
-r = np.sqrt(np.random.rand(n, 1)) * 1/100 + 99/100
-u_trans = u / (u_norm + 1e-12)
 _t = time.time()
 if USE_HEMISPHERE:
-    u_trans = reflect_to_hemisphere(u_trans, axis_hemi)
-_t = _print_phase("Target sample generation (with optional hemisphere)", _t)
+    u_trans = sample_hemisphere_directions(n, d, axis_hemi, lambda_)
+    _t = _print_phase("Target sample generation (direct hemisphere sampling)", _t)
+else:
+    u = np.random.normal(0, 1, (n, d))
+    u[:, 0] = lambda_ * u[:, 0]
+    u_norm = np.linalg.norm(u, axis=1, keepdims=True)
+    u_trans = u / (u_norm + 1e-12)
+    _t = _print_phase("Target sample generation (full sphere)", _t)
+r = np.sqrt(np.random.rand(n, 1)) * 1/100 + 99/100
 X_tar = r * u_trans
 n = X_tar.shape[0]
 
@@ -156,18 +162,27 @@ _t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
 iter = 1000
 h = 15
 m = 700
-u = np.random.normal(0, 1, (m, d))
-u_norm = np.linalg.norm(u, axis=1, keepdims=True)
-r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
-u_trans = u / (u_norm + 1e-12)
 if USE_HEMISPHERE:
-    u_trans = reflect_to_hemisphere(u_trans, axis_hemi)
-x_init = r * u_trans
-# Keep a spherical cap (original constraint) but now guaranteed in hemisphere if enabled.
-x_init = x_init[x_init[:, 1] > 0.15, :]
-m = x_init.shape[0]
-x_t = np.zeros((m, d, iter), dtype=np.float32)
-x_t[:, :, 0] = x_init.astype(np.float32, copy=False)
+    # Directly sample on hemisphere with additional spherical cap constraint
+    # Over-sample to ensure enough points after filtering
+    u_trans = sample_hemisphere_directions(int(m * 1.5), d, axis_hemi, lambda_=1.0)
+    r = np.sqrt(np.random.rand(u_trans.shape[0], 1)) * 1/100 + 99/100
+    x_init = r * u_trans
+    # Keep a spherical cap: y > 0.7
+    x_init = x_init[x_init[:, 1] > 0.7, :]
+    if x_init.shape[0] > m:
+        x_init = x_init[:m, :]  # trim to exactly m
+    m = x_init.shape[0]
+else:
+    u = np.random.normal(0, 1, (m, d))
+    u_norm = np.linalg.norm(u, axis=1, keepdims=True)
+    r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
+    u_trans = u / (u_norm + 1e-12)
+    x_init = r * u_trans
+    x_init = x_init[x_init[:, 1] > 0.7, :]
+    m = x_init.shape[0]
+x_t = np.zeros((m, d, iter), dtype=np.float64)  # Use float64 for numerical precision
+x_t[:, :, 0] = x_init
 _t = _print_phase("Particle initialization", _t)
 
 p_tar = np.sum(data_kernel, axis=0)
@@ -183,13 +198,13 @@ sum_x = np.zeros((m, d))
 loop_start = time.time()
 total_loop = iter - 1
 if USE_GPU:
-    # Stage constants on GPU
-    X_tar_gpu = cp.asarray(X_tar.astype(np.float32, copy=False))
-    p_tar_gpu = cp.asarray(p_tar.astype(np.float32, copy=False))
-    sq_tar_gpu = cp.asarray(sq_tar.astype(np.float32, copy=False))
-    D_gpu = cp.asarray(D.astype(np.float32, copy=False))
-    phi_gpu = cp.asarray(phi[:, :above_tol].astype(np.float32, copy=False))
-    lambda_ns_s_ns_gpu = cp.asarray(lambda_ns_s_ns.astype(np.float32, copy=False))
+    # Stage constants on GPU (keep float64 for precision)
+    X_tar_gpu = cp.asarray(X_tar)
+    p_tar_gpu = cp.asarray(p_tar)
+    sq_tar_gpu = cp.asarray(sq_tar)
+    D_gpu = cp.asarray(D)
+    phi_gpu = cp.asarray(phi[:, :above_tol])
+    lambda_ns_s_ns_gpu = cp.asarray(lambda_ns_s_ns)
     x_t_gpu = cp.asarray(x_t)
     diag_lambda_gpu = cp.diag(lambda_ns_s_ns_gpu)
     # Iteration loop (GPU)
@@ -341,65 +356,49 @@ _advance("scatter_x_t_final")
 print()
 print(f"[TIMER] Plotting total: {time.time() - plot_total_start:.3f}s")
 
-# ---------------- KL Divergence Report (diagonal Gaussian approximation) ----------------
-# We approximate target and final particle sets by diagonal Gaussians.
-# KL(P||Q) for diagonal Gaussians:
-#   KL = 0.5 * sum_j [ (var_P_j / var_Q_j) + ( (mu_Q_j - mu_P_j)^2 / var_Q_j ) - 1 + log(var_Q_j / var_P_j) ]
-# We print KL(target||final), KL(final||target), and symmetric average.
-def _kl_diag(mu_p, var_p, mu_q, var_q):
-    var_p = np.maximum(var_p, 1e-12)
-    var_q = np.maximum(var_q, 1e-12)
-    ratio = var_p / var_q
-    diff2 = (mu_q - mu_p)**2 / var_q
-    return 0.5 * np.sum(ratio + diff2 - 1.0 + np.log(var_q / var_p))
+# ---------------- Wasserstein-1 Distance (Standard/Exact) ----------------
+# Using POT (Python Optimal Transport) library for exact W1 computation
+# Install: pip install POT
+# W1 is the Earth Mover's Distance (EMD) with uniform weights
+print("\n[W1] Computing exact Wasserstein-1 distance...")
+
 try:
+    import ot
+    
     X_fin = x_t[:, :, -1]
-    mu_tar = X_tar.mean(axis=0)
-    mu_fin = X_fin.mean(axis=0)
-    var_tar = X_tar.var(axis=0)
-    var_fin = X_fin.var(axis=0)
-    kl_tar_fin = _kl_diag(mu_tar, var_tar, mu_fin, var_fin)
-    print(f"[KL] KL(target||final)= {kl_tar_fin:.6e}")
-    print(f"[KL] Average KL(target||final)= {kl_tar_fin/d:.6e}")
-except Exception as _e:
-    print(f"[KL] Skipped (error: {_e})")
-
-# Optional: Sliced Wasserstein-1 metric (no extra deps). Approximates W1 by averaging 1D W1 over random projections.
-def _w1_1d(x: np.ndarray, y: np.ndarray, L: int | None = None) -> float:
-    n1 = x.shape[0]; n2 = y.shape[0]
-    if L is None:
-        L = min(n1, n2)
-    u = (np.arange(L) + 0.5) / max(L, 1)
+    n_tar = X_tar.shape[0]
+    n_fin = X_fin.shape[0]
+    
+    # Uniform distributions (equal mass per point)
+    a = np.ones(n_tar) / n_tar
+    b = np.ones(n_fin) / n_fin
+    
+    # Compute pairwise Euclidean distance matrix
+    _t_dist = time.time()
+    M = ot.dist(X_tar, X_fin, metric='euclidean')
+    print(f"[W1] Distance matrix computed in {time.time() - _t_dist:.3f}s")
+    
+    # Solve exact optimal transport problem (EMD algorithm)
+    _t_emd = time.time()
+    w1_exact = ot.emd2(a, b, M)
+    print(f"[W1] EMD solved in {time.time() - _t_emd:.3f}s")
+    
+    print(f"[W1] Exact Wasserstein-1 distance = {w1_exact:.6e}")
+    
+except ImportError:
+    print("[W1] ERROR: POT library not installed. Install with: pip install POT")
+    print("[W1] Falling back to basic statistics...")
     try:
-        qx = np.quantile(x, u, method='linear')
-        qy = np.quantile(y, u, method='linear')
-    except TypeError:
-        # Fallback for older NumPy versions
-        qx = np.quantile(x, u)
-        qy = np.quantile(y, u)
-    return float(np.mean(np.abs(qx - qy)))
-
-def sliced_wasserstein_1(X: np.ndarray, Y: np.ndarray, num_proj: int = 64, seed: int | None = None) -> float:
-    if num_proj <= 0:
-        return float('nan')
-    rng = np.random.default_rng(seed)
-    d = X.shape[1]
-    acc = 0.0
-    for _ in range(num_proj):
-        v = rng.normal(0.0, 1.0, size=(d,))
-        nv = np.linalg.norm(v) + 1e-12
-        v = v / nv
-        x_proj = X @ v
-        y_proj = Y @ v
-        acc += _w1_1d(x_proj, y_proj)
-    return acc / num_proj
-
-try:
-    if SLICED_W1_NUM_PROJ and SLICED_W1_NUM_PROJ > 0:
         X_fin = x_t[:, :, -1]
-        sw1 = sliced_wasserstein_1(X_tar, X_fin, num_proj=SLICED_W1_NUM_PROJ, seed=0)
-        print(f"[W1] Sliced W1 (num_proj={SLICED_W1_NUM_PROJ})= {sw1:.6e}")
+        mu_tar = X_tar.mean(axis=0)
+        mu_fin = X_fin.mean(axis=0)
+        mse_mean = np.mean((mu_tar - mu_fin)**2)
+        print(f"[STAT] MSE(means)= {mse_mean:.6e}")
+        print(f"[STAT] Target mean: {mu_tar}")
+        print(f"[STAT] Final mean: {mu_fin}")
+    except Exception as _e2:
+        print(f"[STAT] Statistics failed: {_e2}")
 except Exception as _e:
-    print(f"[W1] Skipped (error: {_e})")
+    print(f"[W1] Failed to compute W1 (error: {_e})")
 
 plt.show()
