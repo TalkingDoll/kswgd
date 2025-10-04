@@ -260,7 +260,7 @@ if d == 2:
     plt.plot(x_t[:, 0, 0], x_t[:, 1, 0], 'o', markersize=8, color='red', label='Init')  # Red solid circles
     plt.plot(x_t[:, 0, -1], x_t[:, 1, -1], 'o', markersize=10, markerfacecolor='none', markeredgecolor='magenta', markeredgewidth=1.2, alpha=0.6, label='Final')  # Green hollow circles
     plt.legend(fontsize=12)
-    plt.title('2D Results')
+    plt.title('2D Results - DMPS Method')
     plt.axis('equal')
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -272,7 +272,7 @@ else:
     ax.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], s=50, marker='o', color='red', label='Init')  # Red solid circles
     ax.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], s=100, marker='o', facecolors='none', edgecolors='green', linewidths=0.8, alpha=0.5, label='Final')  # Green hollow circles
     ax.legend(fontsize=12)
-    plt.title('3D Results')
+    plt.title('3D Results - DMPS Method')
     plt.show()
     
     fig2 = plt.figure(figsize=(10, 8))
@@ -280,7 +280,7 @@ else:
     ax2.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], s=50, marker='o', color='red', label='Init')  # Red solid circles
     ax2.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], s=100, marker='o', facecolors='none', edgecolors='green', linewidths=0.8, alpha=0.5, label='Final')  # Green hollow circles
     ax2.legend(fontsize=12)
-    plt.title('3D Final State')
+    plt.title('3D Final State - DMPS Method')
     plt.show()
 
 # Plot matrix (scatter matrix)
@@ -291,7 +291,7 @@ pd.plotting.scatter_matrix(
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of X_tar')
+plt.suptitle('Scatter Matrix of X_tar - DMPS Method')
 plt.show()
 
 pd.plotting.scatter_matrix(
@@ -301,5 +301,5 @@ pd.plotting.scatter_matrix(
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of x_t (final)')
+plt.suptitle('Scatter Matrix of x_t (final) - DMPS Method')
 plt.show()

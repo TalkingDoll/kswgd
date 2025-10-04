@@ -80,6 +80,7 @@ _t = time.time()
 
 # ---------------- Configuration ----------------
 USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+KERNEL_TYPE = 1  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic
 
 # Sample 500 points from a circle or semi-circle
 n = 500
@@ -178,32 +179,140 @@ X_tar_next = X_step / (np.linalg.norm(X_step, axis=1, keepdims=True) + 1e-12)
 _t = _print_phase("Kernel-EDMD: X_tar_next generation (manifold Langevin)", _t)
 
 # Quick visualization: X_tar vs X_tar_next
+# Get kernel name for display
+kernel_names = {1: "RBF", 2: "Spherical", 3: "Matérn", 4: "Rational Quadratic"}
+kernel_display = kernel_names.get(KERNEL_TYPE, "Unknown")
+
 if d == 2:
     plt.figure(figsize=(8, 8))
     plt.scatter(X_tar[:, 0], X_tar[:, 1], s=10, c='C0', alpha=0.6, label='X_tar (current)')
     plt.scatter(X_tar_next[:, 0], X_tar_next[:, 1], s=10, c='C1', alpha=0.6, label='X_tar_next (evolved)')
     plt.legend()
     plt.axis('equal')
-    plt.title('Kernel-EDMD: Time Evolution Pair')
+    plt.title(f'Kernel-EDMD: Time Evolution Pair\nKernel: {kernel_display}')
     plt.grid(True, alpha=0.3)
     plt.show(block=False)  # Non-blocking display
 
-# Step 5: Build Gram matrices for Kernel EDMD
-# Kernel bandwidth for EDMD (use median distance)
+# ============================================================
+# Step 5: Kernel Selection for Kernel EDMD
+# ============================================================
+# Note: KERNEL_TYPE is configured at the top of the file (Configuration section)
+
+# Compute bandwidth parameter (used by most kernels)
 sq_tar = np.sum(X_tar ** 2, axis=1)
 H = sq_tar[:, None] + sq_tar[None, :] - 2 * (X_tar @ X_tar.T)
 epsilon = 0.5 * np.median(H) / (np.log(n + 1) + 1e-12)
+length_scale = np.sqrt(np.median(H))  # Alternative scale parameter
 
-def kernel_rbf(X, Y, eps):
-    """RBF kernel: k(x,y) = exp(-||x-y||²/(2ε))"""
+# ============================================================
+# Kernel Definitions
+# ============================================================
+
+def kernel1_rbf(X, Y, eps):
+    """
+    Kernel 1: RBF/Gaussian Kernel
+    k(x,y) = exp(-||x-y||²/(2ε))
+    
+    Pros: Smooth, universal approximator
+    Cons: Sensitive to bandwidth choice
+    """
     sq_x = np.sum(X ** 2, axis=1)
     sq_y = np.sum(Y ** 2, axis=1)
     D2 = sq_x[:, None] + sq_y[None, :] - 2 * (X @ Y.T)
     return np.exp(-D2 / (2 * eps))
 
-K_xx = kernel_rbf(X_tar, X_tar, epsilon)  # Gram matrix at current time
-K_xy = kernel_rbf(X_tar, X_tar_next, epsilon)  # Cross Gram matrix (time evolution)
-_t = _print_phase("Kernel-EDMD: Gram matrices K_xx and K_xy", _t)
+def kernel2_spherical(X, Y, theta_scale=1.0):
+    """
+    Kernel 2: Spherical/Geodesic Kernel
+    k(x,y) = exp(-d_geodesic(x,y)² / (2·θ²))
+    
+    Uses geodesic distance on the manifold: d = arccos(x·y^T)
+    
+    Pros: Respects manifold geometry, ideal for circle/sphere data
+    Cons: Requires normalized inputs
+    """
+    # Ensure normalized to unit sphere
+    X_norm = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
+    Y_norm = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-12)
+    
+    # Cosine similarity
+    cos_sim = X_norm @ Y_norm.T
+    cos_sim = np.clip(cos_sim, -1.0, 1.0)  # Numerical stability
+    
+    # Geodesic distance
+    geodesic_dist = np.arccos(cos_sim)
+    
+    return np.exp(-geodesic_dist**2 / (2 * theta_scale**2))
+
+def kernel3_matern(X, Y, length_scale=1.0, nu=1.5):
+    """
+    Kernel 3: Matérn Kernel (ν=1.5, once differentiable)
+    k(x,y) = (1 + √3·d/ℓ) · exp(-√3·d/ℓ)
+    
+    Pros: Better generalization than RBF, controls smoothness
+    Cons: Slightly more expensive to compute
+    """
+    sq_x = np.sum(X ** 2, axis=1)
+    sq_y = np.sum(Y ** 2, axis=1)
+    D2 = sq_x[:, None] + sq_y[None, :] - 2 * (X @ Y.T)
+    D = np.sqrt(np.maximum(D2, 0))  # Euclidean distance
+    
+    if nu == 1.5:
+        # Once differentiable case (most common)
+        sqrt3_D = np.sqrt(3) * D / length_scale
+        K = (1 + sqrt3_D) * np.exp(-sqrt3_D)
+    elif nu == 2.5:
+        # Twice differentiable case
+        sqrt5_D = np.sqrt(5) * D / length_scale
+        K = (1 + sqrt5_D + sqrt5_D**2 / 3) * np.exp(-sqrt5_D)
+    else:
+        # Fall back to exponential kernel for nu=0.5
+        K = np.exp(-D / length_scale)
+    
+    return K
+
+def kernel4_rational_quadratic(X, Y, alpha=1.0, length_scale=1.0):
+    """
+    Kernel 4: Rational Quadratic Kernel
+    k(x,y) = (1 + ||x-y||²/(2α·ℓ²))^(-α)
+    
+    Equivalent to infinite mixture of RBF kernels with different length scales
+    α → ∞: converges to RBF kernel
+    
+    Pros: Captures multi-scale features
+    Cons: More parameters to tune
+    """
+    sq_x = np.sum(X ** 2, axis=1)
+    sq_y = np.sum(Y ** 2, axis=1)
+    D2 = sq_x[:, None] + sq_y[None, :] - 2 * (X @ Y.T)
+    return (1 + D2 / (2 * alpha * length_scale**2)) ** (-alpha)
+
+# ============================================================
+# Select and Apply Kernel
+# ============================================================
+if KERNEL_TYPE == 1:
+    kernel_name = "RBF"
+    K_xx = kernel1_rbf(X_tar, X_tar, epsilon)
+    K_xy = kernel1_rbf(X_tar, X_tar_next, epsilon)
+elif KERNEL_TYPE == 2:
+    kernel_name = "Spherical"
+    theta_scale = 0.5  # Tune this parameter (0.1 to 1.0)
+    K_xx = kernel2_spherical(X_tar, X_tar, theta_scale=theta_scale)
+    K_xy = kernel2_spherical(X_tar, X_tar_next, theta_scale=theta_scale)
+elif KERNEL_TYPE == 3:
+    kernel_name = "Matérn"
+    K_xx = kernel3_matern(X_tar, X_tar, length_scale=length_scale, nu=1.5)
+    K_xy = kernel3_matern(X_tar, X_tar_next, length_scale=length_scale, nu=1.5)
+elif KERNEL_TYPE == 4:
+    kernel_name = "Rational Quadratic"
+    alpha = 2.0  # Tune this parameter (1.0 to 5.0)
+    K_xx = kernel4_rational_quadratic(X_tar, X_tar, alpha=alpha, length_scale=length_scale)
+    K_xy = kernel4_rational_quadratic(X_tar, X_tar_next, alpha=alpha, length_scale=length_scale)
+else:
+    raise ValueError(f"Invalid KERNEL_TYPE: {KERNEL_TYPE}. Choose 1, 2, 3, or 4.")
+
+print(f"[KERNEL] Using {kernel_name} kernel (Type {KERNEL_TYPE})")
+_t = _print_phase(f"Kernel-EDMD: Gram matrices K_xx and K_xy ({kernel_name})", _t)
 
 # Step 6: Compute Koopman operator via Kernel EDMD
 # Formula: K_koopman = K_xy @ (K_xx + γI)^{-1}
@@ -414,7 +523,7 @@ if d == 2:
     plt.plot(x_t[:, 0, 0], x_t[:, 1, 0], 'o', markersize=8, color='red', label='Init')  # Red solid circles
     plt.plot(x_t[:, 0, -1], x_t[:, 1, -1], 'o', markersize=10, markerfacecolor='none', markeredgecolor='magenta', markeredgewidth=1.2, alpha=0.6, label='Final')  # Green hollow circles
     plt.legend(fontsize=12)
-    plt.title('2D Results')
+    plt.title(f'2D Results - Kernel EDMD with {kernel_name}')
     plt.axis('equal')
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -426,7 +535,7 @@ else:
     ax.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], s=50, marker='o', color='red', label='Init')  # Red solid circles
     ax.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], s=100, marker='o', facecolors='none', edgecolors='green', linewidths=0.8, alpha=0.5, label='Final')  # Green hollow circles
     ax.legend(fontsize=12)
-    plt.title('3D Results')
+    plt.title(f'3D Results - Kernel EDMD with {kernel_name}')
     plt.show()
     
     fig2 = plt.figure(figsize=(10, 8))
@@ -434,7 +543,7 @@ else:
     ax2.scatter(x_t[:, 0, 0], x_t[:, 1, 0], x_t[:, 2, 0], s=50, marker='o', color='red', label='Init')  # Red solid circles
     ax2.scatter(x_t[:, 0, -1], x_t[:, 1, -1], x_t[:, 2, -1], s=100, marker='o', facecolors='none', edgecolors='green', linewidths=0.8, alpha=0.5, label='Final')  # Green hollow circles
     ax2.legend(fontsize=12)
-    plt.title('3D Final State')
+    plt.title(f'3D Final State - Kernel EDMD with {kernel_name}')
     plt.show()
 
 # Plot matrix (scatter matrix)
@@ -445,7 +554,7 @@ pd.plotting.scatter_matrix(
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of X_tar')
+plt.suptitle(f'Scatter Matrix of X_tar - {kernel_name} Kernel')
 plt.show()
 
 pd.plotting.scatter_matrix(
@@ -455,5 +564,5 @@ pd.plotting.scatter_matrix(
     diagonal='hist',
     hist_kwds={'edgecolor': 'black'}
 )
-plt.suptitle('Scatter Matrix of x_t (final)')
+plt.suptitle(f'Scatter Matrix of x_t (final) - {kernel_name} Kernel')
 plt.show()
