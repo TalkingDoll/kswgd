@@ -63,7 +63,7 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
 
 # Sample 500 points from a circle or semi-circle
 n = 500
@@ -178,14 +178,14 @@ _t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
 
 # Run algorithm
 iter = 1000
-h = 2
+h = 20
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
 r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
 u_trans = u / u_norm
 x_init = r * u_trans
-x_init = x_init[x_init[:, 1] > 0.9, :]
+x_init = x_init[x_init[:, 1] > 0.95, :]
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float64)  # Use float64 for precision
 x_t[:, :, 0] = x_init

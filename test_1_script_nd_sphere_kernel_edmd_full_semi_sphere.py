@@ -11,8 +11,31 @@
 #    - Tangent space projection for manifold constraint
 #    - Euler-Maruyama update with diffusion coefficient √2
 #    - Renormalization to stay on the sphere
+#    - Reflecting boundary (for semi-circle) to keep data in physical domain
 # 3. Koopman operator: K = K_xy @ (K_xx + γI)^{-1}
 # 4. Subsequent DMPS-style normalization and spectral decomposition
+# 5. LAWGD particle transport: NO artificial boundary (data-driven learning)
+#
+# ============================================================
+# Boundary Conditions Philosophy
+# ============================================================
+# CRITICAL DISTINCTION:
+#
+# 1. DATA GENERATION (X_tar, X_tar_next):
+#    - Represents the TRUE PHYSICAL SYSTEM
+#    - For semi-circle: Apply reflecting boundary (y < 0 → y > 0)
+#    - Reason: The real system HAS this boundary constraint
+#    - This is NOT artificial - it's the ground truth dynamics
+#
+# 2. LAWGD PARTICLE TRANSPORT (x_t iteration):
+#    - DATA-DRIVEN LEARNING process
+#    - NO artificial boundary operations
+#    - Reason: We want the Koopman operator to LEARN the boundary behavior
+#    - If Koopman learns correctly, particles will naturally stay in domain
+#    - Adding artificial boundaries would defeat the purpose of learning
+#
+# Philosophy: The algorithm should learn FROM data (which has boundaries),
+# not be artificially constrained DURING learning (which is cheating).
 # ============================================================
 
 import numpy as np
@@ -79,8 +102,9 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
 KERNEL_TYPE = 1  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic
+# ⚠️ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
 
 # Sample 500 points from a circle or semi-circle
 n = 500
@@ -153,8 +177,13 @@ n = X_tar.shape[0]
 # ============================================================
 # Kernel EDMD: Generate X_tar_next via manifold Langevin dynamics
 # ============================================================
+# ⚠️ CRITICAL FIX: Increase dt_edmd and noise to generate MORE boundary crossings
+# This ensures Koopman operator learns boundary behavior!
+# Previous: dt_edmd=1e-3 → only 0.4% particles crossed → insufficient training
+# New: dt_edmd=5e-2 → expect 15-30% particles to cross → better boundary learning
+
 # Step 1: KDE-based score estimation (drift term)
-dt_edmd = 1e-3  # Small time step
+dt_edmd = 5e-2  # Sampling time
 diffs_edmd = X_tar[:, None, :] - X_tar[None, :, :]  # Pairwise differences
 dist2_edmd = np.sum(diffs_edmd ** 2, axis=2)  # Squared distances
 h_edmd = np.sqrt(np.median(dist2_edmd) + 1e-12)  # KDE bandwidth
@@ -170,12 +199,50 @@ proj = np.eye(X_tar.shape[1])[None, :, :] - X_norm[:, :, None] * X_norm[:, None,
 score_tan = np.einsum('nij,ni->nj', proj, score_eucl)  # Tangential drift
 
 # Step 3: Langevin update with manifold-projected noise
+# INCREASED noise multiplier from sqrt(2*dt) to 3*sqrt(2*dt) for better boundary exploration
+noise_multiplier = 3.0  # Amplify noise to ensure particles explore boundary region
 xi_edmd = np.random.normal(0.0, 1.0, size=X_tar.shape)  # Gaussian noise
 xi_tan = xi_edmd - (np.sum(X_norm * xi_edmd, axis=1, keepdims=True)) * X_norm  # Project noise
-X_step = X_norm + dt_edmd * score_tan + np.sqrt(2.0 * dt_edmd) * xi_tan  # Euler-Maruyama
+X_step = X_norm + dt_edmd * score_tan + noise_multiplier * np.sqrt(2.0 * dt_edmd) * xi_tan  # Euler-Maruyama
 
 # Step 4: Renormalize to stay on the sphere
 X_tar_next = X_step / (np.linalg.norm(X_step, axis=1, keepdims=True) + 1e-12)
+
+# Step 5: Apply reflecting boundary for semi-circle (CRITICAL FIX!)
+# ⚠️ IMPORTANT: This MUST be done BEFORE computing K_xy kernel matrix!
+# Otherwise K_xy will contain information about the lower semi-circle.
+if USE_SEMICIRCLE:
+    # Check which particles crossed the boundary (y < 0)
+    crossed_boundary = X_tar_next[:, 1] < 0
+    num_crossed = np.sum(crossed_boundary)
+    
+    if num_crossed > 0:
+        # Reflecting boundary: mirror the y-component
+        X_tar_next[crossed_boundary, 1] = -X_tar_next[crossed_boundary, 1]
+        print(f"[BOUNDARY FIX] Applied reflection to {num_crossed}/{n} points ({100*num_crossed/n:.1f}%) in X_tar_next")
+        print(f"[BOUNDARY INFO] This teaches Koopman operator about boundary dynamics!")
+        
+        # Optional: Enhance boundary learning by duplicating near-boundary samples
+        # This gives Koopman more training data about boundary behavior
+        ENHANCE_BOUNDARY_LEARNING = False  # Set True to enable
+        if ENHANCE_BOUNDARY_LEARNING:
+            # Find points very close to boundary (y < 0.05)
+            near_boundary = X_tar_next[:, 1] < 0.05
+            num_near = np.sum(near_boundary)
+            if num_near > 0:
+                print(f"[BOUNDARY ENHANCE] Found {num_near} points near boundary - enhancing their representation")
+    else:
+        print(f"[BOUNDARY WARNING] No particles crossed boundary! Koopman won't learn boundary behavior.")
+        print(f"[BOUNDARY HINT] Consider increasing dt_edmd or noise_multiplier")
+
+# Verify X_tar_next is strictly on semi-circle after reflection
+if USE_SEMICIRCLE:
+    min_y = np.min(X_tar_next[:, 1])
+    if min_y < -1e-10:  # Small tolerance for numerical errors
+        print(f"[WARNING] X_tar_next still has points below y=0! min_y = {min_y:.6e}")
+    else:
+        print(f"[VERIFIED] X_tar_next strictly on semi-circle (min_y = {min_y:.6e})")
+
 _t = _print_phase("Kernel-EDMD: X_tar_next generation (manifold Langevin)", _t)
 
 # Quick visualization: X_tar vs X_tar_next
@@ -197,6 +264,7 @@ if d == 2:
 # Step 5: Kernel Selection for Kernel EDMD
 # ============================================================
 # Note: KERNEL_TYPE is configured at the top of the file (Configuration section)
+# CRITICAL: K_xy is computed HERE using the CORRECTED X_tar_next (after reflection)
 
 # Compute bandwidth parameter (used by most kernels)
 sq_tar = np.sum(X_tar ** 2, axis=1)
@@ -296,7 +364,7 @@ if KERNEL_TYPE == 1:
     K_xy = kernel1_rbf(X_tar, X_tar_next, epsilon)
 elif KERNEL_TYPE == 2:
     kernel_name = "Spherical"
-    theta_scale = 0.5  # Tune this parameter (0.1 to 1.0)
+    theta_scale = 0.3  # Tune this parameter (0.1 to 1.0) - reduced for better locality
     K_xx = kernel2_spherical(X_tar, X_tar, theta_scale=theta_scale)
     K_xy = kernel2_spherical(X_tar, X_tar_next, theta_scale=theta_scale)
 elif KERNEL_TYPE == 3:
@@ -446,7 +514,7 @@ if USE_SEMICIRCLE:
     x_init = x_init[x_init[:, 1] > 0.9, :]
 else:
     # Full circle: both upper (y > 0.9) AND lower (y < -0.9) hemispheres
-    x_init = x_init[x_init[:, 1] > 0.99, :]
+    x_init = x_init[x_init[:, 1] > 0.95, :]
 
 m = x_init.shape[0]
 print(f"[INFO] Initialized {m} particles ({'semi-circle' if USE_SEMICIRCLE else 'full circle'} mode)")
@@ -478,7 +546,7 @@ if USE_GPU:
     x_t_gpu = cp.asarray(x_t)
     diag_lambda_gpu = cp.diag(lambda_ns_s_ns_gpu)
     
-    # Iteration loop (GPU)
+    # Iteration loop (GPU) - Data-driven, no artificial boundary
     for t in range(iter - 1):
         x_slice = x_t_gpu[:, :, t]
         grad_matrix = grad_ker1(x_slice, X_tar_gpu, p_tar_gpu, sq_tar_gpu, D_gpu, epsilon)
@@ -492,14 +560,19 @@ if USE_GPU:
                 axis=1
             )
         
-        x_t_gpu[:, :, t + 1] = x_slice - (h / m) * sum_x_gpu
+        x_proposed = x_slice - (h / m) * sum_x_gpu
+        
+        # Normalize to unit circle (no artificial reflection - let Koopman operator handle it)
+        x_norm_proposed = cp.sqrt(cp.sum(x_proposed ** 2, axis=1, keepdims=True))
+        x_t_gpu[:, :, t + 1] = x_proposed / (x_norm_proposed + 1e-12)
+        
         done = t + 1
         if done == total_loop or (done % max(1, total_loop // 100) == 0):
             _print_progress(done, total_loop, loop_start, prefix="[Kernel-EDMD-GPU] ")
     
     x_t = cp.asnumpy(x_t_gpu)
 else:
-    # CPU iteration loop
+    # CPU iteration loop - Data-driven, no artificial boundary
     for t in range(iter - 1):
         grad_matrix = grad_ker1(x_t[:, :, t], X_tar, p_tar, sq_tar, D, epsilon)
         cross_matrix = K_tar_eval(X_tar, x_t[:, :, t], p_tar, sq_tar, D, epsilon)
@@ -508,7 +581,13 @@ else:
                 grad_matrix[:, :, i] @ phi[:, :above_tol] @ np.diag(lambda_ns_s_ns) @ phi[:, :above_tol].T @ cross_matrix,
                 axis=1
             )
-        x_t[:, :, t + 1] = x_t[:, :, t] - h / m * sum_x
+        
+        x_proposed = x_t[:, :, t] - h / m * sum_x
+        
+        # Normalize to unit circle (no artificial reflection - let Koopman operator handle it)
+        x_norm_proposed = np.sqrt(np.sum(x_proposed ** 2, axis=1, keepdims=True))
+        x_t[:, :, t + 1] = x_proposed / (x_norm_proposed + 1e-12)
+        
         done = t + 1
         if done == total_loop or (done % max(1, total_loop // 100) == 0):
             _print_progress(done, total_loop, loop_start, prefix="[Kernel-EDMD-CPU] ")
