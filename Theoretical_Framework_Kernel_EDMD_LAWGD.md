@@ -110,6 +110,7 @@ where $\sigma^2$ is noise variance and $n$ is sample size.
 ### **Standard Langevin SDE**
 
 In Euclidean space $\mathbb{R}^d$, Langevin dynamics is defined as:
+
 $$
 d\mathbf{X}_t = \nabla \log \pi(\mathbf{X}_t) \, dt + \sqrt{2D} \, d\mathbf{W}_t
 $$
@@ -122,6 +123,7 @@ where:
 ### **Fokker-Planck Equation**
 
 The evolution of the probability density $\rho_t(\mathbf{x})$ is governed by:
+
 $$
 \frac{\partial \rho_t}{\partial t} = \nabla \cdot \left( \rho_t \nabla \log \pi + D \nabla \rho_t \right) = D \nabla \cdot \left( \rho_t \nabla \log \frac{\pi}{\rho_t} \right)
 $$
