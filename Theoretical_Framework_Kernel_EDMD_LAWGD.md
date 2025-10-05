@@ -110,9 +110,9 @@ where $\sigma^2$ is noise variance and $n$ is sample size.
 ### **Standard Langevin SDE**
 
 In Euclidean space $\mathbb{R}^d$, Langevin dynamics is defined as:
-$$
+\begin{equation*}
 d\mathbf{X}_t = \nabla \log \pi(\mathbf{X}_t) \, dt + \sqrt{2D} \, d\mathbf{W}_t
-$$
+\end{equation*}
 
 where:
 - $\nabla \log \pi(\mathbf{x})$: **Score function** (gradient of log target density $\pi$)
