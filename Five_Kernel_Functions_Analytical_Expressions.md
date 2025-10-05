@@ -542,7 +542,7 @@ $$
 
 where:
 - $K_{xx} = k(X_{\text{tar}}, X_{\text{tar}})$: Auto-kernel matrix of current state $(n \times n)$
-- $K_{xy} = k(X_{\text{tar}}, X_{\text{tar_next}})$: Cross-kernel matrix $(n \times n)$
+- $K_{xy} = k(X_{\text{tar}}, X_{\text{tar next}})$: Cross-kernel matrix $(n \times n)$
 - $\gamma > 0$: Tikhonov regularization parameter (in code $\gamma = 10^{-6}$)
 - $I$: Identity matrix
 
