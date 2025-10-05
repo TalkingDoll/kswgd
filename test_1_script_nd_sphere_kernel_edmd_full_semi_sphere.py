@@ -102,8 +102,8 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
-KERNEL_TYPE = 1  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic
+USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+KERNEL_TYPE = 5  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic, 5: Polynomial
 # ⚠️ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
 
 # Sample 500 points from a circle or semi-circle
@@ -171,7 +171,7 @@ else:
 # Radial distance: slightly randomized around radius 1 (creates a thin annulus)
 r = np.sqrt(np.random.rand(n, 1)) * 1/100 + 99/100
 X_tar = r * u_trans
-_t = _print_phase(f"Target sample generation ({label})", _t)
+# _t = _print_phase(f"Target sample generation ({label})", _t)
 n = X_tar.shape[0]
 
 # ============================================================
@@ -243,7 +243,7 @@ if USE_SEMICIRCLE:
     else:
         print(f"[VERIFIED] X_tar_next strictly on semi-circle (min_y = {min_y:.6e})")
 
-_t = _print_phase("Kernel-EDMD: X_tar_next generation (manifold Langevin)", _t)
+# _t = _print_phase("Kernel-EDMD: X_tar_next generation (manifold Langevin)", _t)
 
 # Quick visualization: X_tar vs X_tar_next
 # Get kernel name for display
@@ -355,6 +355,46 @@ def kernel4_rational_quadratic(X, Y, alpha=1.0, length_scale=1.0):
     D2 = sq_x[:, None] + sq_y[None, :] - 2 * (X @ Y.T)
     return (1 + D2 / (2 * alpha * length_scale**2)) ** (-alpha)
 
+def kernel5_polynomial(X, Y, degree=3, coef0=1.0, gamma=None):
+    """
+    Kernel 5: Polynomial Kernel
+    k(x,y) = (γ·⟨x,y⟩ + c₀)^d
+    
+    Parameters:
+    - degree (d): Polynomial degree (typically 2-5)
+    - coef0 (c₀): Independent term (typically 0 or 1)
+    - gamma (γ): Scaling factor (if None, defaults to 1/d)
+    
+    Special cases:
+    - d=1, c₀=0: Linear kernel
+    - d=2: Quadratic kernel (captures pairwise feature interactions)
+    - d=3: Cubic kernel (common choice)
+    
+    Pros: 
+    - Computationally efficient (only inner products)
+    - Explicit feature interactions up to degree d
+    - Works well for data with polynomial structure
+    - Non-stationary (not translation-invariant)
+    
+    Cons:
+    - Sensitive to degree choice
+    - Can grow unbounded for large inner products
+    - Less smooth than RBF for high degrees
+    - May have numerical issues if γ or c₀ are poorly chosen
+    
+    Note: For manifold data (unit sphere), ⟨x,y⟩ ∈ [-1,1], so kernel is bounded.
+    """
+    if gamma is None:
+        gamma = 1.0 / X.shape[1]  # Default: 1/dimension
+    
+    # Inner product matrix
+    inner_prod = X @ Y.T
+    
+    # Polynomial kernel
+    K = (gamma * inner_prod + coef0) ** degree
+    
+    return K
+
 # ============================================================
 # Select and Apply Kernel
 # ============================================================
@@ -376,8 +416,15 @@ elif KERNEL_TYPE == 4:
     alpha = 2.0  # Tune this parameter (1.0 to 5.0)
     K_xx = kernel4_rational_quadratic(X_tar, X_tar, alpha=alpha, length_scale=length_scale)
     K_xy = kernel4_rational_quadratic(X_tar, X_tar_next, alpha=alpha, length_scale=length_scale)
+elif KERNEL_TYPE == 5:
+    kernel_name = "Polynomial"
+    poly_degree = 10  # Polynomial degree (typically 2-5)
+    poly_coef0 = 1.0  # Independent term (0 or 1)
+    poly_gamma = 1.0 / d  # Scaling factor (1/dimension)
+    K_xx = kernel5_polynomial(X_tar, X_tar, degree=poly_degree, coef0=poly_coef0, gamma=poly_gamma)
+    K_xy = kernel5_polynomial(X_tar, X_tar_next, degree=poly_degree, coef0=poly_coef0, gamma=poly_gamma)
 else:
-    raise ValueError(f"Invalid KERNEL_TYPE: {KERNEL_TYPE}. Choose 1, 2, 3, or 4.")
+    raise ValueError(f"Invalid KERNEL_TYPE: {KERNEL_TYPE}. Choose 1, 2, 3, 4, or 5.")
 
 print(f"[KERNEL] Using {kernel_name} kernel (Type {KERNEL_TYPE})")
 _t = _print_phase(f"Kernel-EDMD: Gram matrices K_xx and K_xy ({kernel_name})", _t)
@@ -417,7 +464,7 @@ D_y = np.sum(data_kernel_norm, axis=0)
 # First term divides columns by D_y (broadcast over last axis),
 # second term explicitly divides rows by D_y (reshape as column vector).
 rw_kernel = 0.5 * (data_kernel_norm / D_y + data_kernel_norm / D_y[:, None])
-_t = _print_phase("Random-walk symmetric normalization", _t)
+# _t = _print_phase("Random-walk symmetric normalization", _t)
 
 # ============================================================
 # Spectral Decomposition: Choose ONE method below
@@ -484,7 +531,7 @@ inv_lambda = np.zeros_like(lambda_)
 inv_lambda[1:] = 1 / lambda_[1:]
 inv_lambda = inv_lambda * epsilon
 inv_K = phi @ np.diag(inv_lambda) @ phi.T
-_t = _print_phase("Primary inverse-like weights (inv_lambda)", _t)
+# _t = _print_phase("Primary inverse-like weights (inv_lambda)", _t)
 
 tol = 1e-6
 lambda_ns_mod = np.copy(lambda_ns)
@@ -496,7 +543,7 @@ lambda_ns_inv = np.zeros_like(lambda_ns)
 mask = lambda_ns >= tol
 lambda_ns_inv[mask] = epsilon / (lambda_ns[mask] + reg)
 inv_K_ns = phi @ np.diag(lambda_ns_inv) @ phi.T
-_t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
+# _t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
 
 # Run algorithm
 iter = 1000
@@ -520,7 +567,7 @@ m = x_init.shape[0]
 print(f"[INFO] Initialized {m} particles ({'semi-circle' if USE_SEMICIRCLE else 'full circle'} mode)")
 x_t = np.zeros((m, d, iter), dtype=np.float64)  # Use float64 for precision
 x_t[:, :, 0] = x_init
-_t = _print_phase("Particle initialization", _t)
+# _t = _print_phase("Particle initialization", _t)
 
 p_tar = np.sum(data_kernel, axis=0)
 D = np.sum(data_kernel / np.sqrt(p_tar) / np.sqrt(p_tar)[:, None], axis=1)
