@@ -204,8 +204,6 @@ where:
 - $\Pi_{\mathcal{M}}$: Projection operator onto manifold (e.g., normalization for sphere)
 - $\Delta t$: Time step size
 
-**Convergence**: Euler-Maruyama has **strong order 0.5** and **weak order 1.0** convergence.
-
 ---
 
 ## 🎯 **3. Score Function Estimation (KDE Method)**

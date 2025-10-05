@@ -178,7 +178,7 @@ _t = _print_phase("Regularized inverse weights (lambda_ns_inv)", _t)
 
 # Run algorithm
 iter = 1000
-h = 20
+h = 2
 m = 700
 u = np.random.normal(0, 1, (m, d))
 u_norm = np.linalg.norm(u, axis=1, keepdims=True)
