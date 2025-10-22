@@ -102,7 +102,7 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
 KERNEL_TYPE = 5  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic, 5: Polynomial
 # ⚠️ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
 
@@ -159,14 +159,43 @@ if USE_SEMICIRCLE:
     # label = "semi-circle"
     
 else:
-    # Method: Gaussian sampling for full circle
-    # Sample random directions uniformly from all angles [0, 2π]
+    # ============================================================
+    # METHOD 1: Gaussian Sampling (Marsaglia Method)
+    # ============================================================
+    # This method uses Gaussian sampling + normalization.
+    # Pros: Generalizes to higher dimensions (3D, 4D, etc.)
+    # Cons: Less intuitive, no explicit angle representation
+    
     u = np.random.normal(0, 1, (n, d))
     u[:, 0] = lambda_ * u[:, 0]  # Apply anisotropy
     u_norm = np.linalg.norm(u, axis=1, keepdims=True)
     u_trans = u / (u_norm + 1e-12)
     
     label = "full circle"
+
+    # ============================================================
+    # METHOD 2: Polar Coordinate Sampling (RECOMMENDED)
+    # ============================================================
+    # Directly sample angles uniformly in [0, 2π] and convert to Cartesian.
+    # Pros: Intuitive, efficient, explicitly angle-based
+    # Cons: None for 2D case
+    
+    # theta = np.random.uniform(0, 2 * np.pi, (n, 1))
+    # u_trans = np.hstack([
+    #     np.cos(theta),  # x = cos(θ)
+    #     np.sin(theta)   # y = sin(θ)
+    # ])
+    
+    # # Apply anisotropy (stretch along x-axis) - Optional
+    # # WARNING: This breaks the uniform angular distribution!
+    # # After stretching and re-normalizing, points cluster near y-axis when lambda_ > 1
+    # if lambda_ != 1:
+    #     u_trans[:, 0] = lambda_ * u_trans[:, 0]
+    #     u_norm = np.linalg.norm(u_trans, axis=1, keepdims=True)
+    #     u_trans = u_trans / (u_norm + 1e-12)
+    #     label = f"full circle (anisotropic λ={lambda_})"
+    # else:
+    #     label = "full circle (uniform)"
 
 # Radial distance: slightly randomized around radius 1 (creates a thin annulus)
 r = np.sqrt(np.random.rand(n, 1)) * 1/100 + 99/100
