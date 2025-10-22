@@ -102,7 +102,7 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
 KERNEL_TYPE = 5  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic, 5: Polynomial
 # ⚠️ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
 

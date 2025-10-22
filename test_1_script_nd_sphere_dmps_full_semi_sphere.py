@@ -63,7 +63,7 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
 
 # Sample 500 points from a circle or semi-circle
 n = 500
@@ -216,7 +216,16 @@ u_norm = np.linalg.norm(u, axis=1, keepdims=True)
 r = np.sqrt(np.random.rand(m, 1)) * 1/100 + 99/100
 u_trans = u / u_norm
 x_init = r * u_trans
-x_init = x_init[x_init[:, 1] > 0.95, :]
+# x_init = x_init[x_init[:, 1] > 0.95, :]
+
+# Particle initialization strategy based on mode
+if USE_SEMICIRCLE:
+    # Semi-circle: only upper hemisphere (y > 0.9)
+    x_init = x_init[x_init[:, 1] > 0.9, :]
+else:
+    # Full circle: both upper (y > 0.9) AND lower (y < -0.9) hemispheres
+    x_init = x_init[x_init[:, 1] > 0.95, :]
+
 m = x_init.shape[0]
 x_t = np.zeros((m, d, iter), dtype=np.float64)  # Use float64 for precision
 x_t[:, :, 0] = x_init
