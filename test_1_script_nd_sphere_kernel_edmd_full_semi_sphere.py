@@ -225,7 +225,25 @@ score_eucl = (weighted_means_edmd - X_tar) / (h_edmd ** 2)  # Score function ∇
 X_norm = X_tar / (np.linalg.norm(X_tar, axis=1, keepdims=True) + 1e-12)
 # Projection matrix: P = I - n⊗n^T (removes normal component)
 proj = np.eye(X_tar.shape[1])[None, :, :] - X_norm[:, :, None] * X_norm[:, None, :]
-score_tan = np.einsum('nij,ni->nj', proj, score_eucl)  # Tangential drift
+# ============================================================
+# SDE Interpretation: Choose ONE of the following options
+# ============================================================
+
+# Option 1: Itô SDE (original, no correction needed)
+# - Interpretation: dX = P·∇log(π)dt + √2·P·dW (Itô form)
+# - Discretization: Euler-Maruyama (consistent with Itô calculus)
+# - No geometric correction term needed
+score_tan = np.einsum('nij,ni->nj', proj, score_eucl)
+
+# Option 2: Stratonovich SDE with Itô-Stratonovich correction
+# - Interpretation: dX = P·∇log(π)dt + √2·P∘dW (Stratonovich form)
+# - Since we use Euler-Maruyama (Itô discretization), need correction term
+# - Correction: -(d-1)/2·n accounts for the difference between Itô and Stratonovich
+# - For unit sphere S^(d-1): Stratonovich drift = Itô drift - (1/2)∇·(σσᵀ)
+# geometric_drift = -(d - 1) / 2 * X_norm  # Shape: (n, d), Itô-Stratonovich correction
+# score_tan = np.einsum('nij,ni->nj', proj, score_eucl) + dt_edmd * np.einsum('nij,ni->nj', proj, geometric_drift)
+
+# ============================================================
 
 # Step 3: Langevin update with manifold-projected noise
 # INCREASED noise multiplier from sqrt(2*dt) to 3*sqrt(2*dt) for better boundary exploration
