@@ -63,7 +63,7 @@ np.random.seed(0)
 _t = time.time()
 
 # ---------------- Configuration ----------------
-USE_SEMICIRCLE = True  # Set False for full circle, True for semi-circle (upper half)
+USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
 
 # Sample 500 points from a circle or semi-circle
 n = 500
