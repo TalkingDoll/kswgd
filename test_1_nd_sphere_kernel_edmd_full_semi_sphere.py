@@ -1,20 +1,20 @@
-# ============================================================
-# Kernel EDMD + LAWGD Implementation
+﻿# ============================================================
+# Kernel EDMD + KSWGD Implementation
 # ============================================================
 # This script implements Kernel Extended Dynamic Mode Decomposition (EDMD)
-# combined with Langevin-Adjusted Wasserstein Gradient Descent (LAWGD).
+# combined with Langevin-Adjusted Wasserstein Gradient Descent (KSWGD).
 #
 # Key differences from standard DMPS:
 # 1. Uses Kernel-EDMD to learn the Koopman operator from time-evolved data pairs
 # 2. X_tar_next is generated via manifold-constrained Langevin dynamics:
-#    - KDE-based score estimation: ∇log π(x)
+#    - KDE-based score estimation: âˆ‡log Ï€(x)
 #    - Tangent space projection for manifold constraint
-#    - Euler-Maruyama update with diffusion coefficient √2
+#    - Euler-Maruyama update with diffusion coefficient âˆš2
 #    - Renormalization to stay on the sphere
 #    - Reflecting boundary (for semi-circle) to keep data in physical domain
-# 3. Koopman operator: K = K_xy @ (K_xx + γI)^{-1}
+# 3. Koopman operator: K = K_xy @ (K_xx + Î³I)^{-1}
 # 4. Subsequent DMPS-style normalization and spectral decomposition
-# 5. LAWGD particle transport: NO artificial boundary (data-driven learning)
+# 5. KSWGD particle transport: NO artificial boundary (data-driven learning)
 #
 # ============================================================
 # Boundary Conditions Philosophy
@@ -23,11 +23,11 @@
 #
 # 1. DATA GENERATION (X_tar, X_tar_next):
 #    - Represents the TRUE PHYSICAL SYSTEM
-#    - For semi-circle: Apply reflecting boundary (y < 0 → y > 0)
+#    - For semi-circle: Apply reflecting boundary (y < 0 â†’ y > 0)
 #    - Reason: The real system HAS this boundary constraint
 #    - This is NOT artificial - it's the ground truth dynamics
 #
-# 2. LAWGD PARTICLE TRANSPORT (x_t iteration):
+# 2. KSWGD PARTICLE TRANSPORT (x_t iteration):
 #    - DATA-DRIVEN LEARNING process
 #    - NO artificial boundary operations
 #    - Reason: We want the Koopman operator to LEARN the boundary behavior
@@ -103,8 +103,8 @@ _t = time.time()
 
 # ---------------- Configuration ----------------
 USE_SEMICIRCLE = False  # Set False for full circle, True for semi-circle (upper half)
-KERNEL_TYPE = 5  # 1: RBF, 2: Spherical, 3: Matérn, 4: Rational Quadratic, 5: Polynomial
-# ⚠️ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
+KERNEL_TYPE = 5  # 1: RBF, 2: Spherical, 3: MatÃ©rn, 4: Rational Quadratic, 5: Polynomial
+# âš ï¸ CHANGED: Using Spherical kernel to avoid symmetric bias from RBF kernel
 
 # Sample 500 points from a circle or semi-circle
 n = 500
@@ -141,14 +141,14 @@ if USE_SEMICIRCLE:
     # ============================================================
     # METHOD 2: Polar Coordinate Sampling 
     # ============================================================
-    # This method directly samples angles in [0, π] and converts to Cartesian.
+    # This method directly samples angles in [0, Ï€] and converts to Cartesian.
     # Pros: More efficient, more intuitive, flexible angle range
     # Cons: Different sampling method from full circle (not Gaussian-based)
     
     # theta = np.random.uniform(0, np.pi, (n, 1))
     # u_trans = np.hstack([
-    #     np.cos(theta),  # x = cos(θ)
-    #     np.sin(theta)   # y = sin(θ), ensures y >= 0
+    #     np.cos(theta),  # x = cos(Î¸)
+    #     np.sin(theta)   # y = sin(Î¸), ensures y >= 0
     # ])
     # 
     # # Apply anisotropy (stretch along x-axis)
@@ -176,14 +176,14 @@ else:
     # ============================================================
     # METHOD 2: Polar Coordinate Sampling (RECOMMENDED)
     # ============================================================
-    # Directly sample angles uniformly in [0, 2π] and convert to Cartesian.
+    # Directly sample angles uniformly in [0, 2Ï€] and convert to Cartesian.
     # Pros: Intuitive, efficient, explicitly angle-based
     # Cons: None for 2D case
     
     # theta = np.random.uniform(0, 2 * np.pi, (n, 1))
     # u_trans = np.hstack([
-    #     np.cos(theta),  # x = cos(θ)
-    #     np.sin(theta)   # y = sin(θ)
+    #     np.cos(theta),  # x = cos(Î¸)
+    #     np.sin(theta)   # y = sin(Î¸)
     # ])
     
     # # Apply anisotropy (stretch along x-axis) - Optional
@@ -193,7 +193,7 @@ else:
     #     u_trans[:, 0] = lambda_ * u_trans[:, 0]
     #     u_norm = np.linalg.norm(u_trans, axis=1, keepdims=True)
     #     u_trans = u_trans / (u_norm + 1e-12)
-    #     label = f"full circle (anisotropic λ={lambda_})"
+    #     label = f"full circle (anisotropic Î»={lambda_})"
     # else:
     #     label = "full circle (uniform)"
 
@@ -206,10 +206,10 @@ n = X_tar.shape[0]
 # ============================================================
 # Kernel EDMD: Generate X_tar_next via manifold Langevin dynamics
 # ============================================================
-# ⚠️ CRITICAL FIX: Increase dt_edmd and noise to generate MORE boundary crossings
+# âš ï¸ CRITICAL FIX: Increase dt_edmd and noise to generate MORE boundary crossings
 # This ensures Koopman operator learns boundary behavior!
-# Previous: dt_edmd=1e-3 → only 0.4% particles crossed → insufficient training
-# New: dt_edmd=5e-2 → expect 15-30% particles to cross → better boundary learning
+# Previous: dt_edmd=1e-3 â†’ only 0.4% particles crossed â†’ insufficient training
+# New: dt_edmd=5e-2 â†’ expect 15-30% particles to cross â†’ better boundary learning
 
 # Step 1: KDE-based score estimation (drift term)
 dt_edmd = 5e-2  # Sampling time
@@ -219,28 +219,28 @@ h_edmd = np.sqrt(np.median(dist2_edmd) + 1e-12)  # KDE bandwidth
 W_edmd = np.exp(-dist2_edmd / (2.0 * (h_edmd ** 2)))  # Gaussian weights
 sumW_edmd = np.sum(W_edmd, axis=1, keepdims=True) + 1e-12
 weighted_means_edmd = (W_edmd @ X_tar) / sumW_edmd  # Weighted average
-score_eucl = (weighted_means_edmd - X_tar) / (h_edmd ** 2)  # Score function ∇log π(x)
+score_eucl = (weighted_means_edmd - X_tar) / (h_edmd ** 2)  # Score function âˆ‡log Ï€(x)
 
 # Step 2: Project to tangent space (manifold constraint)
 X_norm = X_tar / (np.linalg.norm(X_tar, axis=1, keepdims=True) + 1e-12)
-# Projection matrix: P = I - n⊗n^T (removes normal component)
+# Projection matrix: P = I - nâŠ—n^T (removes normal component)
 proj = np.eye(X_tar.shape[1])[None, :, :] - X_norm[:, :, None] * X_norm[:, None, :]
 # ============================================================
 # SDE Interpretation: Choose ONE of the following options
 # ============================================================
 
-# Option 1: Itô SDE (original, no correction needed)
-# - Interpretation: dX = P·∇log(π)dt + √2·P·dW (Itô form)
-# - Discretization: Euler-Maruyama (consistent with Itô calculus)
+# Option 1: ItÃ´ SDE (original, no correction needed)
+# - Interpretation: dX = PÂ·âˆ‡log(Ï€)dt + âˆš2Â·PÂ·dW (ItÃ´ form)
+# - Discretization: Euler-Maruyama (consistent with ItÃ´ calculus)
 # - No geometric correction term needed
 score_tan = np.einsum('nij,ni->nj', proj, score_eucl)
 
-# Option 2: Stratonovich SDE with Itô-Stratonovich correction
-# - Interpretation: dX = P·∇log(π)dt + √2·P∘dW (Stratonovich form)
-# - Since we use Euler-Maruyama (Itô discretization), need correction term
-# - Correction: -(d-1)/2·n accounts for the difference between Itô and Stratonovich
-# - For unit sphere S^(d-1): Stratonovich drift = Itô drift - (1/2)∇·(σσᵀ)
-# geometric_drift = -(d - 1) / 2 * X_norm  # Shape: (n, d), Itô-Stratonovich correction
+# Option 2: Stratonovich SDE with ItÃ´-Stratonovich correction
+# - Interpretation: dX = PÂ·âˆ‡log(Ï€)dt + âˆš2Â·Pâˆ˜dW (Stratonovich form)
+# - Since we use Euler-Maruyama (ItÃ´ discretization), need correction term
+# - Correction: -(d-1)/2Â·n accounts for the difference between ItÃ´ and Stratonovich
+# - For unit sphere S^(d-1): Stratonovich drift = ItÃ´ drift - (1/2)âˆ‡Â·(ÏƒÏƒáµ€)
+# geometric_drift = -(d - 1) / 2 * X_norm  # Shape: (n, d), ItÃ´-Stratonovich correction
 # score_tan = np.einsum('nij,ni->nj', proj, score_eucl) + dt_edmd * np.einsum('nij,ni->nj', proj, geometric_drift)
 
 # ============================================================
@@ -256,7 +256,7 @@ X_step = X_norm + dt_edmd * score_tan + noise_multiplier * np.sqrt(2.0 * dt_edmd
 X_tar_next = X_step / (np.linalg.norm(X_step, axis=1, keepdims=True) + 1e-12)
 
 # Step 5: Apply reflecting boundary for semi-circle (CRITICAL FIX!)
-# ⚠️ IMPORTANT: This MUST be done BEFORE computing K_xy kernel matrix!
+# âš ï¸ IMPORTANT: This MUST be done BEFORE computing K_xy kernel matrix!
 # Otherwise K_xy will contain information about the lower semi-circle.
 if USE_SEMICIRCLE:
     # Check which particles crossed the boundary (y < 0)
@@ -294,7 +294,7 @@ if USE_SEMICIRCLE:
 
 # Quick visualization: X_tar vs X_tar_next
 # Get kernel name for display
-kernel_names = {1: "RBF", 2: "Spherical", 3: "Matérn", 4: "Rational Quadratic"}
+kernel_names = {1: "RBF", 2: "Spherical", 3: "MatÃ©rn", 4: "Rational Quadratic"}
 kernel_display = kernel_names.get(KERNEL_TYPE, "Unknown")
 
 if d == 2:
@@ -326,7 +326,7 @@ length_scale = np.sqrt(np.median(H))  # Alternative scale parameter
 def kernel1_rbf(X, Y, eps):
     """
     Kernel 1: RBF/Gaussian Kernel
-    k(x,y) = exp(-||x-y||²/(2ε))
+    k(x,y) = exp(-||x-y||Â²/(2Îµ))
     
     Pros: Smooth, universal approximator
     Cons: Sensitive to bandwidth choice
@@ -339,9 +339,9 @@ def kernel1_rbf(X, Y, eps):
 def kernel2_spherical(X, Y, theta_scale=1.0):
     """
     Kernel 2: Spherical/Geodesic Kernel
-    k(x,y) = exp(-d_geodesic(x,y)² / (2·θ²))
+    k(x,y) = exp(-d_geodesic(x,y)Â² / (2Â·Î¸Â²))
     
-    Uses geodesic distance on the manifold: d = arccos(x·y^T)
+    Uses geodesic distance on the manifold: d = arccos(xÂ·y^T)
     
     Pros: Respects manifold geometry, ideal for circle/sphere data
     Cons: Requires normalized inputs
@@ -361,8 +361,8 @@ def kernel2_spherical(X, Y, theta_scale=1.0):
 
 def kernel3_matern(X, Y, length_scale=1.0, nu=1.5):
     """
-    Kernel 3: Matérn Kernel (ν=1.5, once differentiable)
-    k(x,y) = (1 + √3·d/ℓ) · exp(-√3·d/ℓ)
+    Kernel 3: MatÃ©rn Kernel (Î½=1.5, once differentiable)
+    k(x,y) = (1 + âˆš3Â·d/â„“) Â· exp(-âˆš3Â·d/â„“)
     
     Pros: Better generalization than RBF, controls smoothness
     Cons: Slightly more expensive to compute
@@ -389,10 +389,10 @@ def kernel3_matern(X, Y, length_scale=1.0, nu=1.5):
 def kernel4_rational_quadratic(X, Y, alpha=1.0, length_scale=1.0):
     """
     Kernel 4: Rational Quadratic Kernel
-    k(x,y) = (1 + ||x-y||²/(2α·ℓ²))^(-α)
+    k(x,y) = (1 + ||x-y||Â²/(2Î±Â·â„“Â²))^(-Î±)
     
     Equivalent to infinite mixture of RBF kernels with different length scales
-    α → ∞: converges to RBF kernel
+    Î± â†’ âˆž: converges to RBF kernel
     
     Pros: Captures multi-scale features
     Cons: More parameters to tune
@@ -405,15 +405,15 @@ def kernel4_rational_quadratic(X, Y, alpha=1.0, length_scale=1.0):
 def kernel5_polynomial(X, Y, degree=3, coef0=1.0, gamma=None):
     """
     Kernel 5: Polynomial Kernel
-    k(x,y) = (γ·⟨x,y⟩ + c₀)^d
+    k(x,y) = (Î³Â·âŸ¨x,yâŸ© + câ‚€)^d
     
     Parameters:
     - degree (d): Polynomial degree (typically 2-5)
-    - coef0 (c₀): Independent term (typically 0 or 1)
-    - gamma (γ): Scaling factor (if None, defaults to 1/d)
+    - coef0 (câ‚€): Independent term (typically 0 or 1)
+    - gamma (Î³): Scaling factor (if None, defaults to 1/d)
     
     Special cases:
-    - d=1, c₀=0: Linear kernel
+    - d=1, câ‚€=0: Linear kernel
     - d=2: Quadratic kernel (captures pairwise feature interactions)
     - d=3: Cubic kernel (common choice)
     
@@ -427,9 +427,9 @@ def kernel5_polynomial(X, Y, degree=3, coef0=1.0, gamma=None):
     - Sensitive to degree choice
     - Can grow unbounded for large inner products
     - Less smooth than RBF for high degrees
-    - May have numerical issues if γ or c₀ are poorly chosen
+    - May have numerical issues if Î³ or câ‚€ are poorly chosen
     
-    Note: For manifold data (unit sphere), ⟨x,y⟩ ∈ [-1,1], so kernel is bounded.
+    Note: For manifold data (unit sphere), âŸ¨x,yâŸ© âˆˆ [-1,1], so kernel is bounded.
     """
     if gamma is None:
         gamma = 1.0 / X.shape[1]  # Default: 1/dimension
@@ -455,7 +455,7 @@ elif KERNEL_TYPE == 2:
     K_xx = kernel2_spherical(X_tar, X_tar, theta_scale=theta_scale)
     K_xy = kernel2_spherical(X_tar, X_tar_next, theta_scale=theta_scale)
 elif KERNEL_TYPE == 3:
-    kernel_name = "Matérn"
+    kernel_name = "MatÃ©rn"
     K_xx = kernel3_matern(X_tar, X_tar, length_scale=length_scale, nu=1.5)
     K_xy = kernel3_matern(X_tar, X_tar_next, length_scale=length_scale, nu=1.5)
 elif KERNEL_TYPE == 4:
@@ -477,11 +477,11 @@ print(f"[KERNEL] Using {kernel_name} kernel (Type {KERNEL_TYPE})")
 _t = _print_phase(f"Kernel-EDMD: Gram matrices K_xx and K_xy ({kernel_name})", _t)
 
 # Step 6: Compute Koopman operator via Kernel EDMD
-# Formula: K_koopman = K_xy @ (K_xx + γI)^{-1}
-# This approximates the Koopman operator for the dynamics X_t → X_{t+dt}
+# Formula: K_koopman = K_xy @ (K_xx + Î³I)^{-1}
+# This approximates the Koopman operator for the dynamics X_t â†’ X_{t+dt}
 gamma_ridge = 1e-6  # Tikhonov regularization
 
-# Use eigendecomposition for stable inversion: (K_xx + γI)^{-1} = Q @ diag(1/(λ+γ)) @ Q^T
+# Use eigendecomposition for stable inversion: (K_xx + Î³I)^{-1} = Q @ diag(1/(Î»+Î³)) @ Q^T
 evals_kxx, Q_kxx = eigh(K_xx)
 evals_kxx = np.clip(evals_kxx, 0.0, None)  # Ensure non-negative
 inv_evals = 1.0 / (evals_kxx + gamma_ridge)
@@ -493,7 +493,7 @@ data_kernel = np.nan_to_num(data_kernel, nan=0.0, posinf=0.0, neginf=0.0)
 minK = float(np.min(data_kernel))
 if minK < 0.0:
     data_kernel = data_kernel - minK + 1e-12  # Shift to non-negative
-_t = _print_phase("Kernel-EDMD: Koopman operator K_xy @ (K_xx + γI)^{-1}", _t)
+_t = _print_phase("Kernel-EDMD: Koopman operator K_xy @ (K_xx + Î³I)^{-1}", _t)
 
 # ============================================================
 # DMPS-style normalization (applied to Koopman operator)
@@ -557,7 +557,7 @@ print(f"Eigenvalues > 1.0: {count_gt_1}")
 count_lt_0 = np.sum(lambda_ns < 0.0)
 print(f"Eigenvalues < 0.0 (after clipping): {count_lt_0}")
 
-# Count eigenvalues close to 0 (0 <= λ < 1e-6)
+# Count eigenvalues close to 0 (0 <= Î» < 1e-6)
 tol_small = 1e-6
 count_near_0 = np.sum((lambda_ns >= 0.0) & (lambda_ns < tol_small))
 print(f"Eigenvalues in [0, {tol_small:.0e}): {count_near_0}")
@@ -569,7 +569,7 @@ print(f"Eigenvalues in [{tol_small:.0e}, 1.0]: {count_tiny_to_1}")
 # Show first few eigenvalues
 print(f"\nFirst 10 eigenvalues:")
 for i in range(min(10, len(lambda_ns))):
-    print(f"  λ[{i}] = {lambda_ns[i]:.8f}")
+    print(f"  Î»[{i}] = {lambda_ns[i]:.8f}")
 print("=" * 60 + "\n")
 # ============================================================
 
@@ -739,3 +739,4 @@ pd.plotting.scatter_matrix(
 )
 plt.suptitle(f'Scatter Matrix of x_t (final) - {kernel_name} Kernel')
 plt.show()
+

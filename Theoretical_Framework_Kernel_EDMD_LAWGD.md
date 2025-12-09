@@ -1,4 +1,4 @@
-# Theoretical Framework: Kernel EDMD + Manifold-Constrained Langevin Dynamics + LAWGD
+﻿# Theoretical Framework: Kernel EDMD + Manifold-Constrained Langevin Dynamics + KSWGD
 
 **Document Created**: October 5, 2025  
 **Applicable Code**: `test_1_script_nd_sphere_kernel_edmd_full_semi_sphere.py`  
@@ -6,16 +6,16 @@
 
 ---
 
-## 🎓 **Overview of Theoretical Framework**
+## ðŸŽ“ **Overview of Theoretical Framework**
 
 This code integrates three core theoretical components:
 1. **Kernel EDMD (Extended Dynamic Mode Decomposition)**
 2. **Manifold-Constrained Langevin Dynamics**
-3. **LAWGD (Langevin-Adjusted Wasserstein Gradient Descent)**
+3. **KSWGD (Langevin-Adjusted Wasserstein Gradient Descent)**
 
 ---
 
-## 📐 **1. Kernel EDMD Theory**
+## ðŸ“ **1. Kernel EDMD Theory**
 
 ### **Core Concept**
 Learn the **Koopman operator** $\mathcal{K}$, which describes the evolution of dynamical systems:
@@ -36,7 +36,7 @@ where:
 - $K_{xx} = [k(\mathbf{x}_i, \mathbf{x}_j)]_{i,j=1}^n \in \mathbb{R}^{n \times n}$: Gram matrix of current states
 - $K_{xy} = [k(\mathbf{x}_i, \mathbf{y}_j)]_{i,j=1}^n$: Cross-Gram matrix from current to future states
 - $\gamma > 0$: Tikhonov regularization parameter
-- $k(\cdot, \cdot)$: Kernel function (RBF, Spherical, Matérn, Rational Quadratic)
+- $k(\cdot, \cdot)$: Kernel function (RBF, Spherical, MatÃ©rn, Rational Quadratic)
 
 ### **Theoretical Foundation**
 
@@ -105,7 +105,7 @@ where $\sigma^2$ is noise variance and $n$ is sample size.
 
 ---
 
-## 🌀 **2. Manifold-Constrained Langevin Dynamics**
+## ðŸŒ€ **2. Manifold-Constrained Langevin Dynamics**
 
 ### **Standard Langevin SDE**
 
@@ -206,7 +206,7 @@ where:
 
 ---
 
-## 🎯 **3. Score Function Estimation (KDE Method)**
+## ðŸŽ¯ **3. Score Function Estimation (KDE Method)**
 
 ### **Problem Statement**
 
@@ -271,7 +271,7 @@ $$
 
 ---
 
-## 🚀 **4. LAWGD (Langevin-Adjusted Wasserstein Gradient Descent)**
+## ðŸš€ **4. KSWGD (Langevin-Adjusted Wasserstein Gradient Descent)**
 
 ### **Core Concept**
 
@@ -364,7 +364,7 @@ $$
 
 ---
 
-## 🔗 **5. Theoretical Integration**
+## ðŸ”— **5. Theoretical Integration**
 
 ### **Complete Mathematical Description**
 
@@ -396,7 +396,7 @@ $$
 
 **Purpose**: Learn the dynamical flow field $\mathbf{X}_t \mapsto \mathbf{X}_{t+\Delta t}$ from data.
 
-#### **Phase 3: Particle Transport (LAWGD)**
+#### **Phase 3: Particle Transport (KSWGD)**
 
 Transport particles from initial distribution $\rho_0$ to target distribution $\pi$ via:
 $$
@@ -418,7 +418,7 @@ $$
 
 ---
 
-## 📚 **Mathematical Foundations**
+## ðŸ“š **Mathematical Foundations**
 
 ### **Key Theorems and Results**
 
@@ -469,7 +469,7 @@ $$
 
 ---
 
-## 📊 **Theoretical Modules Summary**
+## ðŸ“Š **Theoretical Modules Summary**
 
 | Module | Mathematical Basis | Key Theorems |
 |--------|-------------------|--------------|
@@ -482,7 +482,7 @@ $$
 
 ---
 
-## 🎯 **Theoretical Innovations**
+## ðŸŽ¯ **Theoretical Innovations**
 
 ### **1. Geometry-Aware Kernels**
 
@@ -531,7 +531,7 @@ $$
 
 ---
 
-## 📖 **Core Mathematical Objects**
+## ðŸ“– **Core Mathematical Objects**
 
 ### **Manifold Structure**
 - **Semi-sphere**: $\mathcal{M}_{\text{semi}} = \mathbb{S}^{d-1}_+ = \{\mathbf{x} \in \mathbb{R}^d : \|\mathbf{x}\|=1, x_d \geq 0\}$
@@ -574,7 +574,7 @@ $$
 
 ---
 
-## 🔬 **Advanced Topics**
+## ðŸ”¬ **Advanced Topics**
 
 ### **Convergence Analysis**
 
@@ -609,7 +609,7 @@ $$
 
 ---
 
-## 🎓 **Appendix: Mathematical Prerequisites**
+## ðŸŽ“ **Appendix: Mathematical Prerequisites**
 
 ### **Required Background**
 
@@ -626,7 +626,7 @@ $$
 3. **Probability Theory**:
    - Measure theory, probability measures
    - Stochastic processes, Brownian motion
-   - Martingales, stochastic calculus (Itô calculus)
+   - Martingales, stochastic calculus (ItÃ´ calculus)
 
 4. **Optimal Transport**:
    - Wasserstein distances, Kantorovich duality
@@ -640,7 +640,7 @@ $$
 
 ---
 
-## 📝 **Notation Summary**
+## ðŸ“ **Notation Summary**
 
 | Symbol | Meaning |
 |--------|---------|
@@ -665,3 +665,4 @@ $$
 **Document End**
 
 This document provides the complete theoretical and analytical foundations for understanding the code, independent of implementation details.
+

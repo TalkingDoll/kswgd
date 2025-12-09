@@ -1,4 +1,4 @@
-# Analytical Expressions of Five Kernel Functions
+﻿# Analytical Expressions of Five Kernel Functions
 
 ## Basic Notation
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 1️⃣ Kernel Type 1: RBF/Gaussian Kernel
+## 1ï¸âƒ£ Kernel Type 1: RBF/Gaussian Kernel
 
 ### Analytical Expression
 
@@ -51,14 +51,14 @@ $$
 \nabla_{\mathbf{x}} k_{\text{RBF}}(\mathbf{x}, \mathbf{y}) = -\frac{1}{\varepsilon}(\mathbf{x} - \mathbf{y}) \cdot k_{\text{RBF}}(\mathbf{x}, \mathbf{y})
 $$
 
-### Advantages ✅
+### Advantages âœ…
 
 - Smooth, infinitely differentiable
 - Universal approximator
 - Computationally efficient
 - Solid theoretical foundation
 
-### Disadvantages ⚠️
+### Disadvantages âš ï¸
 
 - Very sensitive to bandwidth parameter $\varepsilon$
 - Uses Euclidean distance, **does not respect manifold geometry**
@@ -72,7 +72,7 @@ $$
 
 ---
 
-## 2️⃣ Kernel Type 2: Spherical/Geodesic Kernel
+## 2ï¸âƒ£ Kernel Type 2: Spherical/Geodesic Kernel
 
 ### Analytical Expression
 
@@ -112,15 +112,15 @@ For unit circle or unit sphere:
 **2D Unit Circle Example**:
 ```
 Point A = (1, 0), Point B = (0, 1)
-- Euclidean distance (straight line): √2 ≈ 1.414
-- Geodesic distance (circular arc): arccos(0) = π/2 ≈ 1.571
+- Euclidean distance (straight line): âˆš2 â‰ˆ 1.414
+- Geodesic distance (circular arc): arccos(0) = Ï€/2 â‰ˆ 1.571
 ```
 
 **3D Unit Sphere Example**:
 ```
 North Pole N = (0, 0, 1), Equator Point E = (1, 0, 0)
-- Euclidean distance: √2 ≈ 1.414
-- Geodesic distance: π/2 ≈ 1.571 (1/4 circle along meridian)
+- Euclidean distance: âˆš2 â‰ˆ 1.414
+- Geodesic distance: Ï€/2 â‰ˆ 1.571 (1/4 circle along meridian)
 ```
 
 ### Parameter Description
@@ -147,13 +147,13 @@ North Pole N = (0, 0, 1), Equator Point E = (1, 0, 0)
 
 | Angle | Geodesic Distance | Kernel Value | Similarity |
 |-------|------------------|--------------|-----------|
-| 0° (parallel) | 0 | 1.000 | Complete similarity |
-| 30° | 0.524 rad | 0.400 | High similarity |
-| 45° | 0.785 rad | 0.070 | Medium similarity |
-| 90° (orthogonal) | 1.571 rad | $1.8 \times 10^{-8}$ | Almost dissimilar |
-| 180° (opposite) | 3.142 rad | $\approx 0$ | Complete dissimilarity |
+| 0Â° (parallel) | 0 | 1.000 | Complete similarity |
+| 30Â° | 0.524 rad | 0.400 | High similarity |
+| 45Â° | 0.785 rad | 0.070 | Medium similarity |
+| 90Â° (orthogonal) | 1.571 rad | $1.8 \times 10^{-8}$ | Almost dissimilar |
+| 180Â° (opposite) | 3.142 rad | $\approx 0$ | Complete dissimilarity |
 
-### Advantages ✅
+### Advantages âœ…
 
 - **Respects manifold geometric structure** (Most important!)
 - Naturally senses boundary constraints (for semi-circle/semi-sphere problems)
@@ -161,13 +161,13 @@ North Pole N = (0, 0, 1), Equator Point E = (1, 0, 0)
 - Suitable for circular, spherical, and other manifold data
 - Infinitely differentiable
 
-### Disadvantages ⚠️
+### Disadvantages âš ï¸
 
 - Requires normalization of inputs to unit sphere
 - arccos computation slightly slower than simple Euclidean distance
 - Only applicable to manifold data
 
-### Use Cases ⭐
+### Use Cases â­
 
 - **Circular/spherical data**
 - **Semi-circle/semi-sphere data (with boundary constraints)**
@@ -177,12 +177,12 @@ North Pole N = (0, 0, 1), Equator Point E = (1, 0, 0)
 
 ---
 
-## 3️⃣ Kernel Type 3: Matérn Kernel
+## 3ï¸âƒ£ Kernel Type 3: MatÃ©rn Kernel
 
 ### Analytical Expression ($\nu = 1.5$, once differentiable)
 
 $$
-k_{\text{Matérn}}(\mathbf{x}, \mathbf{y}) = \left(1 + \frac{\sqrt{3} \cdot d(\mathbf{x}, \mathbf{y})}{\ell}\right) \exp\left(-\frac{\sqrt{3} \cdot d(\mathbf{x}, \mathbf{y})}{\ell}\right)
+k_{\text{MatÃ©rn}}(\mathbf{x}, \mathbf{y}) = \left(1 + \frac{\sqrt{3} \cdot d(\mathbf{x}, \mathbf{y})}{\ell}\right) \exp\left(-\frac{\sqrt{3} \cdot d(\mathbf{x}, \mathbf{y})}{\ell}\right)
 $$
 
 where $d(\mathbf{x}, \mathbf{y}) = \|\mathbf{x} - \mathbf{y}\|$ is the Euclidean distance.
@@ -192,7 +192,7 @@ where $d(\mathbf{x}, \mathbf{y}) = \|\mathbf{x} - \mathbf{y}\|$ is the Euclidean
 Let $r = \frac{\sqrt{3} \cdot d}{\ell}$, then:
 
 $$
-k_{\text{Matérn}}(\mathbf{x}, \mathbf{y}) = (1 + r) e^{-r}
+k_{\text{MatÃ©rn}}(\mathbf{x}, \mathbf{y}) = (1 + r) e^{-r}
 $$
 
 ### Other Smoothness Versions
@@ -209,7 +209,7 @@ $$
 
 **General Form** (arbitrary $\nu > 0$):
 $$
-k_{\text{Matérn}}(\mathbf{x}, \mathbf{y}) = \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} \cdot d}{\ell}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} \cdot d}{\ell}\right)
+k_{\text{MatÃ©rn}}(\mathbf{x}, \mathbf{y}) = \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} \cdot d}{\ell}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} \cdot d}{\ell}\right)
 $$
 
 where:
@@ -244,17 +244,17 @@ where:
 ### Relationship with RBF
 
 $$
-\lim_{\nu \to \infty} k_{\text{Matérn}}(\mathbf{x}, \mathbf{y}) = \exp\left(-\frac{d^2}{2\ell^2}\right) = k_{\text{RBF}}(\mathbf{x}, \mathbf{y})
+\lim_{\nu \to \infty} k_{\text{MatÃ©rn}}(\mathbf{x}, \mathbf{y}) = \exp\left(-\frac{d^2}{2\ell^2}\right) = k_{\text{RBF}}(\mathbf{x}, \mathbf{y})
 $$
 
-### Advantages ✅
+### Advantages âœ…
 
 - **Controllable function smoothness** (via $\nu$)
 - Better generalization ability than RBF
 - Better matches characteristics of many physical processes
 - More robust on noisy data
 
-### Disadvantages ⚠️
+### Disadvantages âš ï¸
 
 - Slightly more complex computation than RBF
 - Requires choosing appropriate $\nu$ parameter
@@ -269,7 +269,7 @@ $$
 
 ---
 
-## 4️⃣ Kernel Type 4: Rational Quadratic Kernel
+## 4ï¸âƒ£ Kernel Type 4: Rational Quadratic Kernel
 
 ### Analytical Expression
 
@@ -311,7 +311,7 @@ $$
 4. **Smoothness**: Infinitely differentiable ($C^\infty$)
 5. **Scale mixture**: Equivalent to weighted sum of infinitely many RBF kernels with different scales
 
-### Scale Mixture Interpretation 🔑
+### Scale Mixture Interpretation ðŸ”‘
 
 Rational Quadratic kernel can be represented as a **mixture of infinitely many RBF kernels with different bandwidths**:
 
@@ -340,14 +340,14 @@ $$
 \nabla_{\mathbf{x}} k_{\text{RQ}}(\mathbf{x}, \mathbf{y}) = -\frac{\alpha}{\ell^2} \cdot \frac{(\mathbf{x} - \mathbf{y})}{1 + \frac{D^2}{2\alpha\ell^2}} \cdot k_{\text{RQ}}(\mathbf{x}, \mathbf{y})
 $$
 
-### Advantages ✅
+### Advantages âœ…
 
 - Automatically captures **multi-scale features** (Most important!)
 - Insensitive to length scale choice (good robustness)
 - Infinitely differentiable
 - Can serve as efficient replacement for multiple RBF kernels
 
-### Disadvantages ⚠️
+### Disadvantages âš ï¸
 
 - One more parameter ($\alpha$) to tune compared to RBF
 - Slightly more complex computation
@@ -362,7 +362,7 @@ $$
 
 ---
 
-## 5️⃣ Kernel Type 5: Polynomial Kernel
+## 5ï¸âƒ£ Kernel Type 5: Polynomial Kernel
 
 ### Analytical Expression
 
@@ -415,7 +415,7 @@ $$
 k_{\text{Cubic}}(\mathbf{x}, \mathbf{y}) = (1 + \mathbf{x}^T\mathbf{y})^3
 $$
 
-### Feature Space Interpretation 🔑
+### Feature Space Interpretation ðŸ”‘
 
 The polynomial kernel implicitly maps data to a feature space containing all monomials up to degree $d$:
 
@@ -465,7 +465,7 @@ For data on **unit sphere** where $\|\mathbf{x}\| = \|\mathbf{y}\| = 1$:
 - Maximum value: $(1 + 0.5)^3 = 3.375$
 - Minimum value: $(1 - 0.5)^3 = 0.125$
 
-### Advantages ✅
+### Advantages âœ…
 
 - **Computationally efficient**: Only requires inner product computation
 - **Explicit feature interactions**: Captures all polynomial terms up to degree $d$
@@ -473,9 +473,9 @@ For data on **unit sphere** where $\|\mathbf{x}\| = \|\mathbf{y}\| = 1$:
 - **Interpretable**: Clear correspondence to polynomial feature expansion
 - **Bounded for manifold data**: Safe from numerical instability on unit sphere
 
-### Disadvantages ⚠️
+### Disadvantages âš ï¸
 
-- **Sensitive to degree choice**: Too high $d$ → overfitting, too low $d$ → underfitting
+- **Sensitive to degree choice**: Too high $d$ â†’ overfitting, too low $d$ â†’ underfitting
 - **Global nature**: Does not decay to zero (no locality)
 - **Parameter sensitivity**: Poor choice of $\gamma$ or $c_0$ can cause numerical issues
 - **Not suitable for all problems**: Works best when data has polynomial structure
@@ -522,7 +522,7 @@ For data on **unit sphere** where $\|\mathbf{x}\| = \|\mathbf{y}\| = 1$:
 
 ---
 
-## 📐 Application in Kernel EDMD
+## ðŸ“ Application in Kernel EDMD
 
 ### Gram Matrix (Kernel Matrix)
 
@@ -556,7 +556,7 @@ where:
 
 ---
 
-## 💡 Practical Tips
+## ðŸ’¡ Practical Tips
 
 ### Parameter Tuning Tips
 
@@ -570,7 +570,7 @@ where:
    - Need more local: decrease $\theta$
    - Need more global: increase $\theta$
 
-3. **$\nu$ for Matérn kernel**:
+3. **$\nu$ for MatÃ©rn kernel**:
    - Smooth data: $\nu = 2.5$
    - Medium data: $\nu = 1.5$
    - Rough data: $\nu = 0.5$
@@ -587,28 +587,28 @@ where:
 
 ---
 
-## 📚 References
+## ðŸ“š References
 
 1. **RBF Kernel**: 
-   - Schölkopf, B., & Smola, A. J. (2002). *Learning with Kernels: Support Vector Machines, Regularization, Optimization, and Beyond*. MIT Press.
+   - SchÃ¶lkopf, B., & Smola, A. J. (2002). *Learning with Kernels: Support Vector Machines, Regularization, Optimization, and Beyond*. MIT Press.
 
 2. **Spherical/Geodesic Kernel**: 
    - Feragen, A., Lauze, F., & Hauberg, S. (2015). "    " *CVPR 2015*.
 
-3. **Matérn Kernel**: 
+3. **MatÃ©rn Kernel**: 
    - Rasmussen, C. E., & Williams, C. K. I. (2006). *Gaussian Processes for Machine Learning*. MIT Press.
 
 4. **Rational Quadratic Kernel**: 
    - Rasmussen, C. E., & Williams, C. K. I. (2006). *Gaussian Processes for Machine Learning*. MIT Press.
 
 5. **Polynomial Kernel**:
-   - Schölkopf, B., & Smola, A. J. (2002). *Learning with Kernels*. MIT Press. Chapter 2.
+   - SchÃ¶lkopf, B., & Smola, A. J. (2002). *Learning with Kernels*. MIT Press. Chapter 2.
    - Shawe-Taylor, J., & Cristianini, N. (2004). *Kernel Methods for Pattern Analysis*. Cambridge University Press.
 
 6. **Kernel EDMD**:  
-   - Williams, M. O., Rowley, C. W., & Kevrekidis, I. G. (2015). "A kernel-based method for data-driven Koopman spectral analysis." *Journal of Computational Dynamics*, 2(2), 247–265. DOI: 10.3934/jcd.2015005 
+   - Williams, M. O., Rowley, C. W., & Kevrekidis, I. G. (2015). "A kernel-based method for data-driven Koopman spectral analysis." *Journal of Computational Dynamics*, 2(2), 247â€“265. DOI: 10.3934/jcd.2015005 
 
-7. **LAWGD (Kernelized Wasserstein Gradient Flow)**:  
+7. **KSWGD (Kernelized Wasserstein Gradient Flow)**:  
    - Chewi, S., Le Gouic, T., Lu, C., Maunu, T., & Rigollet, P. (2020). "SVGD as a kernelized Wasserstein gradient flow of the chi-squared divergence." *Advances in Neural Information Processing Systems (NeurIPS 2020).
 
 ---
