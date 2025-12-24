@@ -1,2 +1,0 @@
-alpha_repulsive = 0.100000
-Alpha index: 1/10

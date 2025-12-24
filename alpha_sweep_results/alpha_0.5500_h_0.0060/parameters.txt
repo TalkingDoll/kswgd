@@ -1,0 +1,6 @@
+alpha_repulsive = 0.550000
+h_kswgd = 0.006000
+Alpha index: 6/10
+h_kswgd index: 6/10
+DMPS final coverage: 10.64%
+KSWGD final coverage: 56.34%
