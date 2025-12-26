@@ -1,0 +1,40 @@
+# Server Setup Packages
+# Usage: `pip install -r server_setup_packages.txt`
+# Optional CUDA-specific wheels (e.g., torch, cupy) may need manual commands; see notes below.
+
+# Core scientific stack
+numpy
+scipy
+matplotlib
+pillow
+opencv-python
+psutil
+
+# Progress / utilities
+tqdm
+
+# Machine learning & datasets
+torch
+torchvision
+scikit-learn
+diffusers
+datasets
+
+# Image super-resolution / face enhancement
+basicsr
+realesrgan
+gfpgan
+
+# Evaluation metrics
+pytorch-fid
+lpips
+
+# Optional GPU acceleration for custom kernels (pick one matching your CUDA version)
+# cupy-cuda118
+# cupy-cuda121
+
+# Notes:
+# 1. Install PyTorch using the official command for your CUDA version before running this file, e.g.:
+#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 2. Uncomment exactly one `cupy-cudaXXX` line (or install via `pip install cupy-cuda118`) if you need the GPU KSWGD backend.
+# 3. Keep the `weights/` folder (Real-ESRGAN & GFPGAN checkpoints) synchronized on any new server.
