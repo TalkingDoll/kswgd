@@ -1,0 +1,18 @@
+Experiment 13 configuration
+dt_edmd: 0.01
+k_eig: 50
+kswgd_num_iters: 500
+kswgd_num_particles: 64
+kswgd_step_size: 0.001
+lpips_weight: 0.0
+max_samples: 30000
+mlp_epochs: 300
+mlp_hidden_dims: [512, 512, 512, 256]
+n_dict_components: 10
+noise_scale: 0.01
+reduced_dim: 16
+repulsive_alpha: 0.0
+FID_KSWGD_256: 161.58331984196414
+FID_KSWGD_1024: 137.03066008113166
+FID_LDM_256: 108.73495699999751
+FID_LDM_1024: 117.73572778760669
