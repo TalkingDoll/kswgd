@@ -1,16 +1,6 @@
 # KSWGD: Koopman Spectral Wasserstein Gradient Descent
 
-A research project implementing **Diffusion Map Particle System (DMPS)** and **Koopman SDMD** for particle transport and generative modeling across various domains.
-
-## Overview
-
-This repository provides implementations of spectral methods for sampling from target distributions via gradient flow. The core methods include:
-
-- **DMPS (Diffusion Map Particle System)**: Uses Gaussian kernels with diffusion map normalization to transport particles toward a target distribution
-
-- **KSWGD (Koopman Spectral Wasserstein Gradient Descent)**: Combines kernel methods with Stein discrepancy for efficient particle transport
-
-
+This is a research project implementing **Koopman Spectral Wasserstein Gradient Descent (KSWGD)** for particle transport and generative modeling across various domains.
 
 ## Dependencies
 
