@@ -42,3 +42,21 @@ datasets (for CelebA-HQ)
 
 This project is for research purposes.
 
+
+## References
+
+If you use KSWGD or this code in your research, please cite the following paper:
+
+```bibtex
+@misc{xu2025generativemodelingspectralanalysis,
+      title={Generative Modeling through Spectral Analysis of Koopman Operator}, 
+      author={Yuanchao Xu and Fengyi Li and Masahiro Fujisawa and Youssef Marzouk and Isao Ishikawa},
+      year={2025},
+      eprint={2512.18837},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2512.18837}, 
+}
+
+```
+
