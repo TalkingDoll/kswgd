@@ -1,6 +1,6 @@
 # KSWGD: Koopman Spectral Wasserstein Gradient Descent
 
-This is a research project implementing **Koopman Spectral Wasserstein Gradient Descent (KSWGD)** for particle transport and generative modeling across various domains.
+This is a research project implementing **Koopman Spectral Wasserstein Gradient Descent (KSWGD)** for particle transport and generative modeling across various domains. 
 
 ## Dependencies
 
