@@ -17,7 +17,7 @@ Shared implementation lives in `systems.py`, `kswgd.py`, `dmps.py`, `baseline.py
 
 ## Dependencies
 
-The package list is maintained in `server_setup_packages.txt`. The main packages are:
+The main packages are:
 
 - Core scientific stack: `numpy`, `scipy`, `matplotlib`, `pillow`, `opencv-python`, `psutil`
 - Utilities: `tqdm`, `joblib`
