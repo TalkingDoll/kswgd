@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterable
 
 import numpy as np
 
 from K_tar_eval_gpu import K_tar_eval
 from grad_ker1_gpu import grad_ker1
+
+CHECKPOINT_DIR = Path("checkpoints")
 
 try:
     import cupy as cp  # type: ignore
@@ -228,6 +231,14 @@ def torch_device(device: str | None = None):
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def ensure_checkpoint_parent(path: str | Path | None) -> str | None:
+    if path is None:
+        return None
+    checkpoint_path = Path(path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    return str(checkpoint_path)
+
+
 def train_sdmd_solver(
     X: np.ndarray,
     Y: np.ndarray,
@@ -242,9 +253,9 @@ def train_sdmd_solver(
     batch_size: int = 256,
     lr: float = 1e-5,
     fnn_batch_size: int = 32,
-    checkpoint_file: str = "sdmd_koopman.torch",
-    fnn_checkpoint_file: str = "sdmd_fnn.torch",
-    a_b_file: str = "sdmd_ab.jbl",
+    checkpoint_file: str = "checkpoints/sdmd_koopman.torch",
+    fnn_checkpoint_file: str = "checkpoints/sdmd_fnn.torch",
+    a_b_file: str = "checkpoints/sdmd_ab.jbl",
     train_fraction: float = 0.7,
     device: str | None = None,
     verbose: bool = True,
@@ -255,6 +266,9 @@ def train_sdmd_solver(
 
     dev = torch_device(device)
     solver_sdmd_torch_gpu.device = str(dev)
+    checkpoint_file = ensure_checkpoint_parent(checkpoint_file)
+    fnn_checkpoint_file = ensure_checkpoint_parent(fnn_checkpoint_file)
+    a_b_file = ensure_checkpoint_parent(a_b_file)
 
     X = np.asarray(X, dtype=np.float64)
     Y = np.asarray(Y, dtype=np.float64)

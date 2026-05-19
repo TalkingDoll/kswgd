@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 import torch
 import torch.nn as nn
 import numpy as np
@@ -129,6 +130,11 @@ class MLPModel(nn.Module):
     def forward(self, x):
         return self.model(x)
         
+def _ensure_checkpoint_parent(path):
+    if path is not None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
 class KoopmanSolverTorch(object):
     '''
     Build the Koopman solver
@@ -144,8 +150,8 @@ class KoopmanSolverTorch(object):
         psi_y (None): Placeholder for the feature matrix of the output data.
     '''
 
-    def __init__(self, dic, target_dim, reg=0.0, checkpoint_file='example_koopman_net001.torch',
-                 fnn_checkpoint_file='example_fnn001.torch', a_b_file=None,
+    def __init__(self, dic, target_dim, reg=0.0, checkpoint_file='checkpoints/example_koopman_net001.torch',
+                 fnn_checkpoint_file='checkpoints/example_fnn001.torch', a_b_file=None,
                  generator_batch_size=4, fnn_batch_size=32, delta_t=0.1,
                  patience=7, min_delta=1e-4):
         """Initializer
@@ -171,6 +177,9 @@ class KoopmanSolverTorch(object):
         self.fnn_batch_size= fnn_batch_size
         self.delta_t= delta_t
         self.a_b_file= a_b_file
+        _ensure_checkpoint_parent(self.checkpoint_file)
+        _ensure_checkpoint_parent(self.fnn_checkpoint_file)
+        _ensure_checkpoint_parent(self.a_b_file)
         self.patience = patience
         self.min_delta = min_delta
 

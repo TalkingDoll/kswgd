@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import colors
 from matplotlib.patches import Circle
+from matplotlib.ticker import FormatStrFormatter
 from scipy.ndimage import gaussian_filter1d
 from scipy.stats import gaussian_kde
 
@@ -243,6 +244,9 @@ def plot_quad_heatmaps(
     caption: str,
     n_grid: int = 150,
     vmax_source: str | None = None,
+    cmap_name: str = "viridis",
+    density_gamma: float = 1.25,
+    vmax_percentile: float = 95.0,
 ) -> None:
     lo, hi = bounds
     xs = np.linspace(lo, hi, n_grid)
@@ -254,17 +258,17 @@ def plot_quad_heatmaps(
     for name, source in density_sources.items():
         density_maps[name] = boltzmann if isinstance(source, str) and source == "boltzmann" else _safe_kde(source, positions, Xg.shape)
     if vmax_source is not None and vmax_source in density_maps:
-        vmax = float(np.percentile(density_maps[vmax_source], 99.2))
+        vmax = float(np.percentile(density_maps[vmax_source], vmax_percentile))
     else:
-        vmax = max(float(np.percentile(v, 99.2)) for v in density_maps.values())
+        vmax = max(float(np.percentile(v, vmax_percentile)) for v in density_maps.values())
     vmax = max(vmax, 1e-12)
     levels = np.linspace(0.0, vmax, 64)
-    norm = colors.Normalize(vmin=0.0, vmax=vmax, clip=True)
-    cmap = plt.get_cmap("viridis").copy()
+    norm = colors.PowerNorm(gamma=float(density_gamma), vmin=0.0, vmax=vmax, clip=True)
+    cmap = plt.get_cmap(cmap_name).copy()
     n = len(density_maps)
     n_cols = min(4, n)
     n_rows = int(np.ceil(n / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.95 * n_cols, 4.85 * n_rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.35 * n_cols, 4.85 * n_rows), sharex=True, sharey=True)
     axes = np.asarray(axes).ravel()
     im = None
     for idx, (ax, (name, density)) in enumerate(zip(axes, density_maps.items())):
@@ -279,11 +283,12 @@ def plot_quad_heatmaps(
         polish_axes(ax, equal=True)
     for ax in axes[len(density_maps) :]:
         ax.axis("off")
-    fig.subplots_adjust(left=0.065, right=0.985, bottom=0.24, top=0.88, wspace=0.09, hspace=0.34)
+    fig.subplots_adjust(left=0.065, right=0.985, bottom=0.24, top=0.88, wspace=0.045, hspace=0.34)
     if im is not None:
         cax = fig.add_axes([0.24, 0.085, 0.52, 0.026])
         cbar = fig.colorbar(im, cax=cax, orientation="horizontal")
         cbar.set_ticks(np.linspace(0.0, vmax, 6))
+        cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
         cbar.set_label("Density", labelpad=8)
     display(fig)
     save_figure(fig, stem, caption)
@@ -388,7 +393,7 @@ def plot_quad_movement_rate(
     *,
     stem: str | Path,
     caption: str,
-    mark_step: int = 1000,
+    mark_step: int | None = None,
 ) -> None:
     fig, ax = plt.subplots(figsize=(7.4, 5.7))
     colors = {"DMPS": "#E74C3C", "KSWGD": "#3498DB"}
@@ -397,11 +402,12 @@ def plot_quad_movement_rate(
         steps = np.asarray(metrics["steps"])
         movement = np.asarray(metrics["movement_rate"])
         ax.plot(steps[1:], movement[1:], linewidth=2.4, marker=markers.get(method, "o"), markersize=4, markevery=5, label=method, color=colors.get(method))
-    ax.axvline(x=mark_step, color="gray", linestyle="--", linewidth=1, alpha=0.55)
+    if mark_step is not None:
+        ax.axvline(x=mark_step, color="gray", linestyle="--", linewidth=1, alpha=0.55)
     ax.set_xlabel("Iteration Steps")
     ax.set_ylabel("Movement Rate (Avg Displacement)")
     ax.set_title("Particle Stability", pad=14)
-    ax.grid(True, alpha=0.3, linestyle="--")
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.legend(loc="upper right", framealpha=0.9)
     polish_axes(ax)
     finish_layout(fig, top=0.90)
@@ -458,7 +464,7 @@ def plot_quad_kl_divergence(
     training_kl: float,
     stem: str | Path,
     caption: str,
-    mark_step: int = 1000,
+    mark_step: int | None = None,
 ) -> None:
     steps = list(steps)
     fig, ax = plt.subplots(figsize=(11.0, 6.5))
@@ -468,13 +474,14 @@ def plot_quad_kl_divergence(
         ax.plot(steps, values, linewidth=2.4, marker=markers.get(method, "o"), markersize=4.5, markevery=5, label=method, color=colors.get(method))
     ax.axhline(y=training_kl, color="green", linestyle="-", linewidth=2.3, label="Training Data", alpha=0.82)
     ax.fill_between(steps, 0, training_kl, color="green", alpha=0.10)
-    ax.axvline(x=mark_step, color="gray", linestyle="--", linewidth=1.2, alpha=0.6)
+    if mark_step is not None:
+        ax.axvline(x=mark_step, color="gray", linestyle="--", linewidth=1.2, alpha=0.6)
     ax.set_xlabel("Iteration Steps")
     ax.set_ylabel("KL Divergence")
     ax.set_title("KL Divergence vs Boltzmann Distribution", pad=14)
     ax.set_xlim(min(steps), max(steps))
     ax.set_yscale("log")
-    ax.grid(True, alpha=0.3, linestyle="--")
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.legend(fontsize=12, loc="upper right", framealpha=0.9)
     polish_axes(ax)
     finish_layout(fig, top=0.90)
@@ -515,6 +522,7 @@ def plot_ac_field_grid(
         cax = fig.add_axes([0.895, 0.17, 0.016, 0.64])
         cbar = fig.colorbar(im, cax=cax)
         cbar.set_label("u", labelpad=10)
+        cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
         cbar.ax.tick_params(labelsize=12)
     display(fig)
     save_figure(fig, stem, caption)
