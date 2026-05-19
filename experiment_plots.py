@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import colors
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Patch, Rectangle
 from matplotlib.ticker import FormatStrFormatter
 from scipy.ndimage import gaussian_filter1d
 from scipy.stats import gaussian_kde
@@ -54,6 +54,306 @@ def clean_tick_labels(ax) -> None:
         else:
             ax.set_yticks(ticks)
             ax.set_yticklabels(labels)
+
+
+def draw_chessboard_background(
+    ax,
+    *,
+    grid_size: int = 4,
+    domain: tuple[float, float] = (-2.0, 2.0),
+    gray_color: str = "#E8E0D8",
+    white_color: str = "#FFFFFF",
+    line_color: str = "#AAAAAA",
+) -> None:
+    lo, hi = domain
+    spacing = (hi - lo) / grid_size
+    for i in range(grid_size):
+        for j in range(grid_size):
+            ax.add_patch(
+                Rectangle(
+                    (lo + i * spacing, lo + j * spacing),
+                    spacing,
+                    spacing,
+                    facecolor=gray_color if (i + j) % 2 == 0 else white_color,
+                    edgecolor=line_color,
+                    linewidth=0.8,
+                    zorder=0,
+                )
+            )
+    ax.set_xlim(lo - 0.08, hi + 0.08)
+    ax.set_ylim(lo - 0.08, hi + 0.08)
+    polish_axes(ax, equal=True)
+
+
+def plot_chessboard_points(
+    X_target: np.ndarray,
+    *,
+    grid_size: int,
+    domain: tuple[float, float],
+    stem: str | Path,
+    caption: str,
+) -> None:
+    fig, ax = plt.subplots(figsize=(7.2, 7.0))
+    draw_chessboard_background(ax, grid_size=grid_size, domain=domain)
+    ax.scatter(X_target[:, 0], X_target[:, 1], s=3, c="#2E86AB", alpha=0.45, edgecolors="none", rasterized=True, zorder=2)
+    ax.set_title(f"Target Distribution (n = {len(X_target)})", pad=14)
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
+    finish_layout(fig, top=0.91)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_chessboard_transport(
+    X_target: np.ndarray,
+    X_initial: np.ndarray,
+    X_final: np.ndarray,
+    *,
+    grid_size: int,
+    domain: tuple[float, float],
+    n_iter: int,
+    step_size: float,
+    stem: str | Path,
+    caption: str,
+) -> None:
+    fig, axes = plt.subplots(1, 3, figsize=(19.0, 6.35), sharex=True, sharey=True)
+    panels = [
+        ("Target", X_target, "#2E86AB", 2.6, 0.44, "filled"),
+        ("Initial", X_initial, "#E8453C", 12.0, 0.58, "filled"),
+        ("KSWGD final", X_final, "#7B2D8E", 16.0, 0.72, "open"),
+    ]
+    for idx, (ax, (title, points, color, size, alpha, style)) in enumerate(zip(axes, panels)):
+        draw_chessboard_background(ax, grid_size=grid_size, domain=domain)
+        if style == "open":
+            ax.scatter(points[:, 0], points[:, 1], s=size, facecolors="none", edgecolors=color, linewidths=0.9, alpha=alpha, rasterized=True, zorder=2)
+        else:
+            ax.scatter(points[:, 0], points[:, 1], s=size, c=color, alpha=alpha, edgecolors="none", rasterized=True, zorder=2)
+        ax.set_title(title, pad=12)
+        ax.set_xlabel("$x_1$")
+        if idx == 0:
+            ax.set_ylabel("$x_2$")
+        else:
+            ax.tick_params(labelleft=False)
+    print(f"Figure note: Chessboard transport with m={len(X_initial)}, T={n_iter}, h={step_size:g}.")
+    fig.subplots_adjust(left=0.055, right=0.99, bottom=0.105, top=0.91, wspace=0.08)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_chessboard_evolution(
+    snapshots: Mapping[int, np.ndarray],
+    *,
+    grid_size: int,
+    domain: tuple[float, float],
+    stem: str | Path,
+    caption: str,
+) -> None:
+    steps = sorted(snapshots)
+    fig, axes = plt.subplots(1, len(steps), figsize=(4.7 * len(steps), 4.9), sharex=True, sharey=True)
+    axes = np.atleast_1d(axes)
+    for idx, (ax, step) in enumerate(zip(axes, steps)):
+        draw_chessboard_background(ax, grid_size=grid_size, domain=domain)
+        pts = snapshots[step]
+        ax.scatter(pts[:, 0], pts[:, 1], s=10, c="#7B2D8E", alpha=0.56, edgecolors="none", rasterized=True, zorder=2)
+        ax.set_title(f"step {step}", pad=12)
+        ax.set_xlabel("$x_1$")
+        if idx == 0:
+            ax.set_ylabel("$x_2$")
+        else:
+            ax.tick_params(labelleft=False)
+    print(f"Figure note: KSWGD evolution snapshots at steps {', '.join(str(s) for s in steps)}.")
+    fig.subplots_adjust(left=0.055, right=0.99, bottom=0.115, top=0.90, wspace=0.08)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_chessboard_histograms(
+    X_target: np.ndarray,
+    X_final: np.ndarray,
+    *,
+    grid_size: int,
+    domain: tuple[float, float],
+    stem: str | Path,
+    caption: str,
+) -> None:
+    lo, hi = domain
+    bins = np.linspace(lo, hi, 41)
+    fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.15), sharex=True, sharey=True)
+    im = None
+    for idx, (ax, title, points) in enumerate(zip(axes, ["Target histogram", "KSWGD final histogram"], [X_target, X_final])):
+        im = ax.hist2d(points[:, 0], points[:, 1], bins=bins, cmap="viridis", density=True)[3]
+        spacing = (hi - lo) / grid_size
+        for k in range(grid_size + 1):
+            coord = lo + k * spacing
+            ax.axhline(coord, color="white", linewidth=0.6, alpha=0.5)
+            ax.axvline(coord, color="white", linewidth=0.6, alpha=0.5)
+        ax.set_title(title, pad=12)
+        ax.set_xlabel("$x_1$")
+        if idx == 0:
+            ax.set_ylabel("$x_2$")
+        polish_axes(ax, equal=True)
+    fig.subplots_adjust(left=0.06, right=0.855, bottom=0.105, top=0.88, wspace=0.08)
+    if im is not None:
+        cax = fig.add_axes([0.885, 0.19, 0.018, 0.58])
+        cbar = fig.colorbar(im, cax=cax)
+        cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+        cbar.set_label("Density")
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_chessboard_density_overlay(
+    X_final: np.ndarray,
+    *,
+    grid_size: int,
+    domain: tuple[float, float],
+    stem: str | Path,
+    caption: str,
+) -> None:
+    lo, hi = domain
+    bins = np.linspace(lo, hi, 41)
+    H, xedges, yedges = np.histogram2d(X_final[:, 0], X_final[:, 1], bins=bins, density=True)
+    H = H / (H.max() + 1e-12)
+    x_centers = 0.5 * (xedges[:-1] + xedges[1:])
+    y_centers = 0.5 * (yedges[:-1] + yedges[1:])
+    spacing = (hi - lo) / grid_size
+    mask = np.zeros_like(H)
+    for ix, xc in enumerate(x_centers):
+        for iy, yc in enumerate(y_centers):
+            gi = min(int((xc - lo) / spacing), grid_size - 1)
+            gj = min(int((yc - lo) / spacing), grid_size - 1)
+            mask[ix, iy] = 1.0 if (gi + gj) % 2 == 0 else 0.0
+    rgb = np.ones((*H.shape, 3))
+    rgb[:, :, 0] -= mask * 0.08
+    rgb[:, :, 1] -= mask * 0.10
+    rgb[:, :, 2] -= mask * 0.05
+    intensity = H**0.7
+    rgb[:, :, 0] -= intensity * 0.55
+    rgb[:, :, 1] -= intensity * 0.75
+    rgb[:, :, 2] -= intensity * 0.20
+    rgb = np.clip(rgb, 0.0, 1.0)
+
+    fig, ax = plt.subplots(figsize=(8.0, 7.35))
+    ax.imshow(np.transpose(rgb, (1, 0, 2))[::-1], extent=[lo, hi, lo, hi], aspect="equal", interpolation="bilinear")
+    for k in range(grid_size + 1):
+        coord = lo + k * spacing
+        ax.axhline(coord, color="#AAAAAA", linewidth=0.8, alpha=0.7)
+        ax.axvline(coord, color="#AAAAAA", linewidth=0.8, alpha=0.7)
+    ax.set_title("KSWGD Density on Chessboard", pad=14)
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
+    ax.legend(
+        handles=[
+            Patch(facecolor="#E8E0D8", edgecolor="#AAAAAA", label="Target support"),
+            Patch(facecolor=(0.45, 0.25, 0.80), label="High KSWGD density"),
+        ],
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.145),
+        ncol=2,
+        frameon=True,
+    )
+    finish_layout(fig, top=0.92)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_spectral_eigenvalues(
+    eigenvalues: np.ndarray,
+    *,
+    title: str,
+    stem: str | Path,
+    caption: str,
+    n_show: int = 30,
+) -> None:
+    values = np.asarray(eigenvalues).real
+    n_show = min(int(n_show), len(values))
+    fig, axes = plt.subplots(1, 2, figsize=(14.0, 5.45))
+    colors_eig = plt.cm.plasma(np.linspace(0.15, 0.85, n_show))
+    axes[0].bar(np.arange(n_show), values[:n_show], color=colors_eig, edgecolor="white", linewidth=0.3, width=0.85)
+    axes[0].plot(np.arange(n_show), values[:n_show], "o-", color="#333333", markersize=4, linewidth=1, alpha=0.6)
+    axes[0].set_title("Leading eigenvalues", pad=12)
+    axes[0].set_xlabel("Eigenvalue index")
+    axes[0].set_ylabel("$\\lambda_k$")
+    positive = values[values > 0]
+    n_pos = min(n_show, len(positive))
+    axes[1].semilogy(np.arange(n_pos), positive[:n_pos], "o-", color="#333333", markersize=3, linewidth=1, alpha=0.55)
+    axes[1].scatter(np.arange(n_pos), positive[:n_pos], c=plt.cm.plasma(np.linspace(0.15, 0.85, n_pos)), s=42, edgecolors="white", linewidths=0.5)
+    axes[1].set_title("Positive eigenvalues (log)", pad=12)
+    axes[1].set_xlabel("Eigenvalue index")
+    axes[1].set_ylabel("$\\lambda_k$")
+    for ax in axes:
+        polish_axes(ax, grid=True)
+    print(f"Figure note: {title}.")
+    fig.subplots_adjust(left=0.075, right=0.985, bottom=0.13, top=0.90, wspace=0.26)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_sphere_transport(
+    X_target: np.ndarray,
+    X_initial: np.ndarray,
+    results: Mapping[str, np.ndarray],
+    *,
+    stem: str | Path,
+    caption: str,
+    limit: float = 1.5,
+) -> None:
+    labels = ["Target", "Initial", *results.keys()]
+    arrays = [X_target, X_initial, *results.values()]
+    colors = ["#2E86AB", "#E8453C", "#7B2D8E", "#3498DB", "#2ECC71"]
+    fig, axes = plt.subplots(1, len(arrays), figsize=(5.25 * len(arrays), 5.25), sharex=True, sharey=True)
+    axes = np.atleast_1d(axes)
+    for idx, (ax, label, points) in enumerate(zip(axes, labels, arrays)):
+        if idx <= 1:
+            ax.scatter(points[:, 0], points[:, 1], s=12 if idx == 0 else 24, c=colors[idx], alpha=0.58, edgecolors="none")
+        else:
+            ax.scatter(points[:, 0], points[:, 1], s=30, facecolors="none", edgecolors=colors[idx], linewidths=0.9, alpha=0.72)
+        circle = plt.Circle((0, 0), 1.0, fill=False, color="black", linestyle="--", linewidth=1.0, alpha=0.55)
+        ax.add_patch(circle)
+        ax.set_title(label, pad=12)
+        ax.set_xlabel("$x_1$")
+        if idx == 0:
+            ax.set_ylabel("$x_2$")
+        else:
+            ax.tick_params(labelleft=False)
+        ax.set_xlim(-limit, limit)
+        ax.set_ylim(-limit, limit)
+        polish_axes(ax, equal=True, grid=True)
+    fig.subplots_adjust(left=0.055, right=0.99, bottom=0.12, top=0.87, wspace=0.09)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
+
+
+def plot_sphere_time_pair(
+    X_target: np.ndarray,
+    X_next: np.ndarray,
+    *,
+    kernel_name: str,
+    stem: str | Path,
+    caption: str,
+) -> None:
+    fig, ax = plt.subplots(figsize=(7.2, 7.0))
+    ax.scatter(X_target[:, 0], X_target[:, 1], s=12, c="#2E86AB", alpha=0.56, label="$X_{tar}$", edgecolors="none")
+    ax.scatter(X_next[:, 0], X_next[:, 1], s=12, c="#E67E22", alpha=0.56, label="$X_{next}$", edgecolors="none")
+    ax.add_patch(plt.Circle((0, 0), 1.0, fill=False, color="black", linestyle="--", linewidth=1.0, alpha=0.55))
+    ax.set_title(f"One-Step Pair for KSWGD ({kernel_name})", pad=14)
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
+    ax.legend(frameon=True, loc="upper right")
+    ax.set_xlim(-1.4, 1.4)
+    ax.set_ylim(-1.4, 1.4)
+    polish_axes(ax, equal=True, grid=True)
+    finish_layout(fig, top=0.91)
+    display(fig)
+    save_figure(fig, stem, caption)
+    plt.close(fig)
 
 
 def plot_torus_triptych(
@@ -499,7 +799,7 @@ def plot_ac_field_grid(
 ) -> None:
     labels = list(samples_by_label)
     n_rows = len(labels)
-    fig, axes = plt.subplots(n_rows, count, figsize=(2.85 * count, 2.55 * n_rows))
+    fig, axes = plt.subplots(n_rows, count, figsize=(3.05 * count, 2.75 * n_rows))
     axes = np.asarray(axes)
     if axes.ndim == 1:
         axes = axes[None, :]
@@ -514,16 +814,16 @@ def plot_ac_field_grid(
             ax.set_xticks([])
             ax.set_yticks([])
             if row == 0:
-                ax.set_title(f"Sample {col + 1}", pad=8, fontsize=16)
+                ax.set_title(f"Sample {col + 1}", pad=10, fontsize=18)
             if col == 0:
-                ax.set_ylabel(label, rotation=0, ha="right", va="center", labelpad=30, fontsize=15)
-    fig.subplots_adjust(left=0.13, right=0.855, bottom=0.065, top=0.90, wspace=0.11, hspace=0.24)
+                ax.set_ylabel(label, rotation=0, ha="right", va="center", labelpad=34, fontsize=18)
+    fig.subplots_adjust(left=0.155, right=0.855, bottom=0.060, top=0.905, wspace=0.105, hspace=0.22)
     if im is not None:
         cax = fig.add_axes([0.895, 0.17, 0.016, 0.64])
         cbar = fig.colorbar(im, cax=cax)
-        cbar.set_label("u", labelpad=10)
+        cbar.set_label("u", labelpad=10, fontsize=17)
         cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
-        cbar.ax.tick_params(labelsize=12)
+        cbar.ax.tick_params(labelsize=14)
     display(fig)
     save_figure(fig, stem, caption)
     plt.close(fig)
@@ -584,7 +884,7 @@ def plot_ac_histogram_timeline(
         steps = [s for s in steps if s != 0]
     n_cols = min(4, len(steps))
     n_rows = int(np.ceil(len(steps) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.0 * n_cols, 4.65 * n_rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.35 * n_cols, 5.05 * n_rows), sharex=True, sharey=True)
     axes = np.asarray(axes).ravel()
     for idx, (ax, step) in enumerate(zip(axes, steps)):
         gen_hist, _ = np.histogram(np.asarray(generated_by_step[step]).ravel(), bins=bins, density=True)
@@ -594,17 +894,17 @@ def plot_ac_histogram_timeline(
         ax.plot(centers, target_hist, color="black", linewidth=2.5, label="Target")
         ax.plot(centers, gen_hist, label=method, **style)
         ax.fill_between(centers, gen_hist, color=color, alpha=0.12)
-        ax.set_title(f"iteration {step}", pad=14)
+        ax.set_title(f"iteration {step}", pad=15, fontsize=18)
         if idx // n_cols == n_rows - 1:
-            ax.set_xlabel("u")
+            ax.set_xlabel("u", fontsize=17)
         if idx % n_cols == 0:
-            ax.set_ylabel("Density")
+            ax.set_ylabel("Density", fontsize=17)
         ax.set_xlim(-1.5, 1.5)
         polish_axes(ax, grid=True)
     for ax in axes[len(steps) :]:
         ax.axis("off")
-    axes[0].legend(frameon=True, loc="upper left")
-    fig.subplots_adjust(left=0.055, right=0.985, bottom=0.10, top=0.90, wspace=0.20, hspace=0.32)
+    axes[0].legend(frameon=True, loc="upper left", fontsize=16, borderaxespad=0.45)
+    fig.subplots_adjust(left=0.068, right=0.985, bottom=0.115, top=0.895, wspace=0.18, hspace=0.34)
     display(fig)
     save_figure(fig, stem, caption)
     plt.close(fig)
@@ -619,16 +919,16 @@ def plot_ac_method_histograms(
 ) -> None:
     bins = np.linspace(-1.5, 1.5, 120)
     centers = 0.5 * (bins[:-1] + bins[1:])
-    fig, ax = plt.subplots(figsize=(9.4, 5.9))
+    fig, ax = plt.subplots(figsize=(9.8, 6.15))
     target_hist, _ = np.histogram(np.asarray(target_fields).ravel(), bins=bins, density=True)
     ax.plot(centers, gaussian_filter1d(target_hist, sigma=2), color="black", linewidth=2.6, label="Target")
     for name, fields in method_to_fields.items():
         hist, _ = np.histogram(np.asarray(fields).ravel(), bins=bins, density=True)
         ax.plot(centers, gaussian_filter1d(hist, sigma=2), linewidth=2.2, label=name)
-    ax.set_title("Pixel-value distributions", pad=16)
-    ax.set_xlabel("u")
-    ax.set_ylabel("Density")
-    ax.legend(frameon=False)
+    ax.set_title("Pixel-value distributions", pad=16, fontsize=18)
+    ax.set_xlabel("u", fontsize=17)
+    ax.set_ylabel("Density", fontsize=17)
+    ax.legend(frameon=False, fontsize=16)
     polish_axes(ax, grid=True)
     finish_layout(fig, top=0.88)
     display(fig)
@@ -661,7 +961,7 @@ def plot_ac_method_timeline_overlay(
         draw_methods.append("KSWGD")
     n_cols = min(4, len(steps))
     n_rows = int(np.ceil(len(steps) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.3 * n_cols, 4.85 * n_rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.65 * n_cols, 5.20 * n_rows), sharex=True, sharey=True)
     axes = np.asarray(axes).ravel()
 
     for idx, (ax, step) in enumerate(zip(axes, steps)):
@@ -671,11 +971,11 @@ def plot_ac_method_timeline_overlay(
             hist, _ = np.histogram(np.asarray(fields).ravel(), bins=bins, density=True)
             hist = gaussian_filter1d(hist, sigma=2)
             ax.plot(centers, hist, label=method, **AC_METHOD_STYLES.get(method, {"linewidth": 2.2}))
-        ax.set_title(f"iteration {step}", pad=14)
+        ax.set_title(f"iteration {step}", pad=15, fontsize=18)
         if idx // n_cols == n_rows - 1:
-            ax.set_xlabel("u")
+            ax.set_xlabel("u", fontsize=17)
         if idx % n_cols == 0:
-            ax.set_ylabel("Density")
+            ax.set_ylabel("Density", fontsize=17)
         ax.set_xlim(-1.5, 1.5)
         polish_axes(ax, grid=True)
 
@@ -686,8 +986,8 @@ def plot_ac_method_timeline_overlay(
     legend_order = ["Target", "KSWGD", "ULA", "SVGD", "Matrix SVGD"]
     labels = [label for label in legend_order if label in handle_by_label]
     handles = [handle_by_label[label] for label in labels]
-    fig.legend(handles, labels, loc="lower center", ncol=min(5, len(labels)), frameon=False, bbox_to_anchor=(0.5, 0.018))
-    fig.subplots_adjust(left=0.055, right=0.985, bottom=0.135, top=0.90, wspace=0.20, hspace=0.32)
+    fig.legend(handles, labels, loc="lower center", ncol=min(5, len(labels)), frameon=False, bbox_to_anchor=(0.5, 0.020), fontsize=16)
+    fig.subplots_adjust(left=0.068, right=0.985, bottom=0.155, top=0.895, wspace=0.18, hspace=0.34)
     display(fig)
     save_figure(fig, stem, caption)
     plt.close(fig)

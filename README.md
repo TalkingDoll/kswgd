@@ -8,10 +8,10 @@ The cleaned core experiments are:
 
 - `test_1_torus.ipynb`: runs the torus experiment and compares KSWGD with DMPS through final particle distributions, angular diagnostics, and KDE-style distribution plots.
 - `test_2_quadruple_well.ipynb`: runs the quadruple-well experiment with the restored original DMPS and KSWGD settings, including particle snapshots, density heatmaps, well occupancy over time, movement rate, and KL divergence.
-- `test_4_allen_cahn.ipynb`: runs latent-space KSWGD for the stochastic Allen-Cahn equation under two noise levels, `sigma=1.4142` and `sigma=0.1`, and visualizes decoded fields and pixel-value evolution.
+- `test_3_allen_cahn.ipynb`: runs latent-space KSWGD for the stochastic Allen-Cahn equation under two noise levels, `sigma=1.4142` and `sigma=0.1`, and visualizes decoded fields and pixel-value evolution.
 - `test_1_torus_baseline_comparison.ipynb`: compares torus KSWGD with baseline particle methods such as ULA, SVGD, Matrix SVGD, RFM, and GFM.
 - `test_2_quadruple_well_baseline_comparison.ipynb`: compares quadruple-well KSWGD/DMPS with baseline samplers such as ULA, MALA, HMC, and LDVI using the same target setup.
-- `test_4_allen_cahn_baseline_comparison.ipynb`: compares Allen-Cahn latent KSWGD with baseline latent particle methods and summarizes method behavior across time.
+- `test_3_allen_cahn_baseline_comparison.ipynb`: compares Allen-Cahn latent KSWGD with baseline latent particle methods and summarizes method behavior across time.
 
 Shared implementation lives in `systems.py`, `kswgd.py`, `dmps.py`, `baseline.py`, `experiment_plots.py`, and `plotting_utils.py`.
 

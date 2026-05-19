@@ -37,6 +37,58 @@ def gaussian_kernel(X: np.ndarray, Y: np.ndarray, epsilon: float) -> np.ndarray:
     return np.exp(-pairwise_sq_dists(X, Y) / (2.0 * float(epsilon)))
 
 
+def named_kernel_matrix(
+    X: np.ndarray,
+    Y: np.ndarray,
+    *,
+    kernel_type: int | str = 1,
+    epsilon: float | None = None,
+    length_scale: float | None = None,
+    theta_scale: float = 0.3,
+    matern_nu: float = 1.5,
+    rq_alpha: float = 2.0,
+    polynomial_degree: int = 10,
+    polynomial_coef0: float = 1.0,
+    polynomial_gamma: float | None = None,
+) -> tuple[np.ndarray, str]:
+    """Kernel choices used by the legacy nd-sphere notebook."""
+    X = np.asarray(X, dtype=np.float64)
+    Y = np.asarray(Y, dtype=np.float64)
+    key = str(kernel_type).lower()
+    aliases = {
+        "1": "rbf",
+        "2": "spherical",
+        "3": "matern",
+        "4": "rational_quadratic",
+        "5": "polynomial",
+    }
+    key = aliases.get(key, key.replace("-", "_").replace(" ", "_"))
+    if key in {"rbf", "gaussian"}:
+        if epsilon is None:
+            raise ValueError("epsilon is required for the RBF kernel.")
+        return gaussian_kernel(X, Y, epsilon), "RBF"
+    if key == "spherical":
+        Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
+        Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-12)
+        cos_sim = np.clip(Xn @ Yn.T, -1.0, 1.0)
+        geodesic = np.arccos(cos_sim)
+        return np.exp(-(geodesic**2) / (2.0 * theta_scale**2)), "Spherical"
+    D2 = pairwise_sq_dists(X, Y)
+    length_scale = float(length_scale if length_scale is not None else np.sqrt(np.median(D2) + 1e-12))
+    if key == "matern":
+        if abs(float(matern_nu) - 1.5) > 1e-12:
+            raise ValueError("Only the legacy Matern nu=1.5 kernel is implemented.")
+        D = np.sqrt(np.maximum(D2, 0.0))
+        scaled = np.sqrt(3.0) * D / length_scale
+        return (1.0 + scaled) * np.exp(-scaled), "Matern"
+    if key == "rational_quadratic":
+        return (1.0 + D2 / (2.0 * float(rq_alpha) * length_scale**2)) ** (-float(rq_alpha)), "Rational Quadratic"
+    if key == "polynomial":
+        gamma = 1.0 / X.shape[1] if polynomial_gamma is None else float(polynomial_gamma)
+        return (gamma * (X @ Y.T) + float(polynomial_coef0)) ** int(polynomial_degree), "Polynomial"
+    raise ValueError(f"Unknown kernel_type: {kernel_type!r}")
+
+
 @dataclass
 class SpectralModel:
     X_target: np.ndarray
@@ -182,6 +234,133 @@ def fit_spectral_model(
         kernel_matrix=data_kernel,
         method=method,
     )
+
+
+def fit_spectral_model_from_kernel(
+    X_target: np.ndarray,
+    data_kernel: np.ndarray,
+    *,
+    epsilon: float,
+    max_modes: int | None = None,
+    eigen_tol: float = 1e-6,
+    reg: float = 1e-3,
+    normalize_weights: bool = False,
+    method: str = "KSWGD",
+) -> SpectralModel:
+    """Fit the KSWGD spectral object from a precomputed target kernel.
+
+    This keeps the legacy notebooks' kernel construction intact while reusing
+    the shared particle-transport implementation.
+    """
+    X_target = np.asarray(X_target, dtype=np.float64)
+    data_kernel = np.asarray(data_kernel, dtype=np.float64)
+    data_kernel = np.nan_to_num(data_kernel, nan=0.0, posinf=0.0, neginf=0.0)
+    min_value = float(np.min(data_kernel))
+    if min_value < 0.0:
+        data_kernel = data_kernel - min_value + 1e-12
+
+    p_target, density_norm = _safe_density_norm(data_kernel)
+    sqrt_p = np.sqrt(p_target)
+    data_kernel_norm = data_kernel / sqrt_p[:, None] / sqrt_p[None, :]
+    D_y = np.sum(data_kernel_norm, axis=0) + 1e-12
+    rw_kernel = 0.5 * (data_kernel_norm / D_y[None, :] + data_kernel_norm / D_y[:, None])
+    rw_kernel = 0.5 * (rw_kernel + rw_kernel.T)
+
+    evals_rw, evecs_rw = np.linalg.eigh(rw_kernel)
+    order = np.argsort(evals_rw)[::-1]
+    eigenvalues = evals_rw[order]
+    eigenvalues = np.where(eigenvalues < eigen_tol, 0.0, eigenvalues)
+    eigenvectors = np.real(evecs_rw[:, order])
+
+    inv_generator = np.zeros_like(eigenvalues)
+    generator_gap = 1.0 - eigenvalues
+    valid_gap = np.abs(generator_gap) > eigen_tol
+    valid_generator = np.flatnonzero(valid_gap)
+    valid_generator = valid_generator[valid_generator != 0]
+    inv_generator[valid_generator] = float(epsilon) / generator_gap[valid_generator]
+
+    inv_diffusion = np.zeros_like(eigenvalues)
+    valid_eigs = eigenvalues >= eigen_tol
+    inv_diffusion[valid_eigs] = float(epsilon) / (eigenvalues[valid_eigs] + float(reg))
+    weights = inv_diffusion * inv_generator * inv_diffusion
+
+    valid_modes = np.flatnonzero(valid_eigs)
+    if max_modes is None:
+        max_modes = len(valid_modes)
+    valid_modes = valid_modes[: min(int(max_modes), len(valid_modes))]
+    if len(valid_modes) == 0:
+        valid_modes = np.arange(min(int(max_modes or len(eigenvalues)), len(eigenvalues)))
+        weights = np.ones_like(eigenvalues)
+        weights[0] = 0.0
+    eigenvectors = eigenvectors[:, valid_modes]
+    eigenvalues = eigenvalues[valid_modes]
+    weights = weights[valid_modes]
+
+    if normalize_weights and np.max(np.abs(weights)) > 0:
+        weights = weights / np.max(np.abs(weights))
+
+    return SpectralModel(
+        X_target=X_target,
+        epsilon=float(epsilon),
+        p_target=p_target,
+        sq_target=np.sum(X_target * X_target, axis=1),
+        density_norm=density_norm,
+        eigenvalues=eigenvalues,
+        eigenvectors=eigenvectors,
+        weights=weights,
+        kernel_matrix=data_kernel,
+        method=method,
+    )
+
+
+def fit_kernel_edmd_model(
+    X_target: np.ndarray,
+    X_next: np.ndarray,
+    *,
+    kernel_type: int | str = 5,
+    epsilon: float | None = None,
+    ridge: float = 1e-6,
+    max_modes: int | None = None,
+    eigen_tol: float = 1e-6,
+    method: str = "KSWGD",
+    **kernel_kwargs,
+) -> tuple[SpectralModel, str]:
+    """Build the legacy kernel-EDMD spectral model used in extra_test/test_1."""
+    X_target = np.asarray(X_target, dtype=np.float64)
+    X_next = np.asarray(X_next, dtype=np.float64)
+    D2 = pairwise_sq_dists(X_target)
+    if epsilon is None:
+        epsilon = 0.5 * float(np.median(D2)) / (np.log(len(X_target) + 1.0) + 1e-12)
+    length_scale = float(np.sqrt(np.median(D2) + 1e-12))
+    K_xx, kernel_name = named_kernel_matrix(
+        X_target,
+        X_target,
+        kernel_type=kernel_type,
+        epsilon=float(epsilon),
+        length_scale=length_scale,
+        **kernel_kwargs,
+    )
+    K_xy, _ = named_kernel_matrix(
+        X_target,
+        X_next,
+        kernel_type=kernel_type,
+        epsilon=float(epsilon),
+        length_scale=length_scale,
+        **kernel_kwargs,
+    )
+    evals, Q = np.linalg.eigh(K_xx)
+    evals = np.clip(evals, 0.0, None)
+    inv = 1.0 / (evals + float(ridge))
+    data_kernel = K_xy @ ((Q * inv[None, :]) @ Q.T)
+    model = fit_spectral_model_from_kernel(
+        X_target,
+        data_kernel,
+        epsilon=float(epsilon),
+        max_modes=max_modes,
+        eigen_tol=eigen_tol,
+        method=method,
+    )
+    return model, kernel_name
 
 
 def _use_gpu(use_gpu: bool | str) -> bool:

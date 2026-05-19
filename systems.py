@@ -11,6 +11,163 @@ def rng(seed: int | None = None) -> np.random.Generator:
 
 
 @dataclass
+class ChessboardConfig:
+    n_target: int = 2000
+    n_particles: int = 500
+    n_iter: int = 500
+    step_size: float = 1.0
+    grid_size: int = 4
+    domain: tuple[float, float] = (-2.0, 2.0)
+    seed: int = 42
+
+    @property
+    def spacing(self) -> float:
+        return (self.domain[1] - self.domain[0]) / self.grid_size
+
+
+def chessboard_square_bounds(config: ChessboardConfig) -> np.ndarray:
+    lo, _ = config.domain
+    bounds = []
+    for i in range(config.grid_size):
+        for j in range(config.grid_size):
+            if (i + j) % 2 == 0:
+                x_lo = lo + i * config.spacing
+                y_lo = lo + j * config.spacing
+                bounds.append([x_lo, y_lo, x_lo + config.spacing, y_lo + config.spacing])
+    return np.asarray(bounds, dtype=np.float64)
+
+
+def sample_chessboard_target(config: ChessboardConfig, seed: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    gen = rng(config.seed if seed is None else seed)
+    bounds = chessboard_square_bounds(config)
+    samples_per_square = config.n_target // len(bounds)
+    remainder = config.n_target - samples_per_square * len(bounds)
+    samples = []
+    for idx, (x_lo, y_lo, x_hi, y_hi) in enumerate(bounds):
+        n_square = samples_per_square + (1 if idx < remainder else 0)
+        samples.append(
+            np.column_stack(
+                [
+                    gen.uniform(x_lo, x_hi, n_square),
+                    gen.uniform(y_lo, y_hi, n_square),
+                ]
+            )
+        )
+    X_target = np.vstack(samples).astype(np.float64)
+    gen.shuffle(X_target)
+    return X_target, bounds
+
+
+def init_chessboard_particles(config: ChessboardConfig, seed: int | None = None) -> np.ndarray:
+    gen = rng(config.seed + 1 if seed is None else seed)
+    lo, hi = config.domain
+    return gen.uniform(lo, hi, size=(config.n_particles, 2)).astype(np.float64)
+
+
+def reflect_into_domain(X: np.ndarray, domain: tuple[float, float]) -> np.ndarray:
+    """Reflect points back into a square domain, matching the old chessboard notebook."""
+    X = np.asarray(X, dtype=np.float64).copy()
+    lo, hi = domain
+    for dim_idx in range(X.shape[1]):
+        while np.any(X[:, dim_idx] < lo) or np.any(X[:, dim_idx] > hi):
+            X[:, dim_idx] = np.where(X[:, dim_idx] < lo, 2 * lo - X[:, dim_idx], X[:, dim_idx])
+            X[:, dim_idx] = np.where(X[:, dim_idx] > hi, 2 * hi - X[:, dim_idx], X[:, dim_idx])
+        X[:, dim_idx] = np.clip(X[:, dim_idx], lo, hi)
+    return X
+
+
+def chessboard_support_mask(X: np.ndarray, bounds: np.ndarray) -> np.ndarray:
+    X = np.asarray(X)
+    in_support = np.zeros(len(X), dtype=bool)
+    for x_lo, y_lo, x_hi, y_hi in np.asarray(bounds):
+        in_support |= (X[:, 0] >= x_lo) & (X[:, 0] <= x_hi) & (X[:, 1] >= y_lo) & (X[:, 1] <= y_hi)
+    return in_support
+
+
+@dataclass
+class SphereConfig:
+    n_target: int = 500
+    dim: int = 2
+    anisotropy: float = 1.0
+    n_iter: int = 1000
+    step_size: float = 2.0
+    n_init_particles: int = 700
+    use_semicircle: bool = False
+    seed: int = 0
+    kernel_type: int = 5
+    dmps_epsilon: float = 1e-1
+    dt_edmd: float = 5e-2
+    noise_multiplier: float = 3.0
+
+
+def sample_sphere_target(config: SphereConfig, seed: int | None = None) -> np.ndarray:
+    """Sample the circle/semi-circle target used in the original nd-sphere notebook."""
+    gen = rng(config.seed if seed is None else seed)
+    if config.use_semicircle:
+        samples = []
+        while sum(len(chunk) for chunk in samples) < config.n_target:
+            need = config.n_target - sum(len(chunk) for chunk in samples)
+            batch_size = max(need, int(need * 2.5))
+            u = gen.normal(0.0, 1.0, size=(batch_size, config.dim))
+            u[:, 0] = config.anisotropy * u[:, 0]
+            u = u / (np.linalg.norm(u, axis=1, keepdims=True) + 1e-12)
+            samples.append(u[u[:, 1] >= 0])
+        directions = np.vstack(samples)[: config.n_target]
+    else:
+        u = gen.normal(0.0, 1.0, size=(config.n_target, config.dim))
+        u[:, 0] = config.anisotropy * u[:, 0]
+        directions = u / (np.linalg.norm(u, axis=1, keepdims=True) + 1e-12)
+    radii = np.sqrt(gen.random((config.n_target, 1))) * 0.01 + 0.99
+    return (radii * directions).astype(np.float64)
+
+
+def init_sphere_particles(config: SphereConfig, seed: int | None = None) -> np.ndarray:
+    gen = rng(config.seed + 1 if seed is None else seed)
+    u = gen.normal(0.0, 1.0, size=(config.n_init_particles, config.dim))
+    u = u / (np.linalg.norm(u, axis=1, keepdims=True) + 1e-12)
+    radii = np.sqrt(gen.random((config.n_init_particles, 1))) * 0.01 + 0.99
+    X = radii * u
+    if config.use_semicircle:
+        X = X[X[:, 1] > 0.9]
+    else:
+        X = X[X[:, 1] > 0.95]
+    return X.astype(np.float64)
+
+
+def project_to_unit_sphere(X: np.ndarray) -> np.ndarray:
+    X = np.asarray(X, dtype=np.float64)
+    return X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
+
+
+def sphere_langevin_step(config: SphereConfig, X_target: np.ndarray, seed: int | None = None) -> np.ndarray:
+    """Generate the one-step target used by the original sphere KSWGD section."""
+    gen = rng(config.seed + 2 if seed is None else seed)
+    X_norm = project_to_unit_sphere(X_target)
+    diffs = X_target[:, None, :] - X_target[None, :, :]
+    dist2 = np.sum(diffs * diffs, axis=2)
+    h = np.sqrt(np.median(dist2) + 1e-12)
+    W = np.exp(-dist2 / (2.0 * h**2))
+    weighted_means = (W @ X_target) / (np.sum(W, axis=1, keepdims=True) + 1e-12)
+    score_eucl = (weighted_means - X_target) / (h**2)
+    proj = np.eye(X_target.shape[1])[None, :, :] - X_norm[:, :, None] * X_norm[:, None, :]
+    score_tan = np.einsum("nij,ni->nj", proj, score_eucl)
+    correction = -(X_target.shape[1] - 1) * X_norm
+    xi = gen.normal(0.0, 1.0, size=X_target.shape)
+    xi_tan = xi - np.sum(X_norm * xi, axis=1, keepdims=True) * X_norm
+    X_step = (
+        X_norm
+        + config.dt_edmd * score_tan
+        + config.dt_edmd * correction
+        + config.noise_multiplier * np.sqrt(2.0 * config.dt_edmd) * xi_tan
+    )
+    X_next = project_to_unit_sphere(X_step)
+    if config.use_semicircle:
+        X_next[X_next[:, 1] < 0, 1] *= -1
+        X_next = project_to_unit_sphere(X_next)
+    return X_next.astype(np.float64)
+
+
+@dataclass
 class TorusConfig:
     R: float = 2.0
     r: float = 0.8
