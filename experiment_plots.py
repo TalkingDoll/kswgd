@@ -661,7 +661,17 @@ def plot_quad_pair_snapshots(
             if step == 0:
                 ax.scatter(pts[:, 0], pts[:, 1], s=10, c="red", marker="o", label="Initial", zorder=5, edgecolors="none")
             else:
-                ax.scatter(pts[:, 0], pts[:, 1], s=13, facecolors="none", edgecolors="magenta", linewidths=0.8, label=f"Step {step}", zorder=8)
+                ax.scatter(
+                    pts[:, 0],
+                    pts[:, 1],
+                    s=10,
+                    c="red",
+                    marker="o",
+                    edgecolors="none",
+                    label=f"Step {step}",
+                    zorder=8,
+                    rasterized=True,
+                )
             for center in centers:
                 ax.add_patch(
                     Circle(
@@ -695,7 +705,7 @@ def plot_quad_movement_rate(
     caption: str,
     mark_step: int | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(7.4, 5.7))
+    fig, ax = plt.subplots(figsize=(11.0, 6.5))
     colors = {"DMPS": "#E74C3C", "KSWGD": "#3498DB"}
     markers = {"DMPS": "o", "KSWGD": "s"}
     for method, metrics in metrics_by_method.items():

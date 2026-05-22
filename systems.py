@@ -336,7 +336,8 @@ class FourWellPotential:
         pts = np.column_stack([Xg.ravel(), Yg.ravel()])
         V = self.potential(pts).reshape(n_grid, n_grid)
         rho = np.exp(-V / self.temperature)
-        rho /= np.trapezoid(np.trapezoid(rho, ys, axis=0), xs)
+        integrate = getattr(np, "trapezoid", np.trapz)
+        rho /= integrate(integrate(rho, ys, axis=0), xs)
         return Xg, Yg, V, rho
 
 
