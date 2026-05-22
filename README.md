@@ -1,6 +1,6 @@
 # KSWGD: Koopman Spectral Wasserstein Gradient Descent
 
-This repository contains research notebooks and shared Python modules for testing **Koopman Spectral Wasserstein Gradient Descent (KSWGD)** on synthetic manifolds, multimodal stochastic systems, and latent-space PDE data.
+This repository contains research notebooks and shared Python modules for testing **Koopman Spectral Wasserstein Gradient Descent (KSWGD)** on compact manifolds, metastable dynamical systems, and high dimensional stochastic PDE data.
 
 ## Main Notebooks
 
