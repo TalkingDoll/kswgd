@@ -875,6 +875,30 @@ AC_METHOD_STYLES = {
     },
 }
 
+AC_TIMELINE_TITLE_SIZE = 34
+AC_TIMELINE_LABEL_SIZE = 32
+AC_TIMELINE_TICK_SIZE = 26
+AC_TIMELINE_LEGEND_SIZE = 29
+AC_TIMELINE_WIDTH_PER_COL = 8.20
+AC_TIMELINE_HEIGHT_PER_ROW = 7.20
+AC_TIMELINE_OVERLAY_WIDTH_PER_COL = 8.45
+AC_TIMELINE_OVERLAY_HEIGHT_PER_ROW = 7.35
+AC_TIMELINE_EXPORT_RIGHT_EDGE = 0.985
+AC_TIMELINE_EXPORT_TOP_EDGE = 0.925
+
+
+def _pin_timeline_top_right_margin(fig) -> None:
+    """Keep tight export/display from trimming the intended top and right margins."""
+    fig.text(
+        AC_TIMELINE_EXPORT_RIGHT_EDGE,
+        AC_TIMELINE_EXPORT_TOP_EDGE,
+        ".",
+        ha="right",
+        va="top",
+        fontsize=1,
+        color="white",
+    )
+
 
 def plot_ac_histogram_timeline(
     target_fields: np.ndarray,
@@ -894,7 +918,13 @@ def plot_ac_histogram_timeline(
         steps = [s for s in steps if s != 0]
     n_cols = min(4, len(steps))
     n_rows = int(np.ceil(len(steps) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.35 * n_cols, 5.05 * n_rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(AC_TIMELINE_WIDTH_PER_COL * n_cols, AC_TIMELINE_HEIGHT_PER_ROW * n_rows),
+        sharex=True,
+        sharey=True,
+    )
     axes = np.asarray(axes).ravel()
     for idx, (ax, step) in enumerate(zip(axes, steps)):
         gen_hist, _ = np.histogram(np.asarray(generated_by_step[step]).ravel(), bins=bins, density=True)
@@ -904,17 +934,28 @@ def plot_ac_histogram_timeline(
         ax.plot(centers, target_hist, color="black", linewidth=2.5, label="Target")
         ax.plot(centers, gen_hist, label=method, **style)
         ax.fill_between(centers, gen_hist, color=color, alpha=0.12)
-        ax.set_title(f"iteration {step}", pad=15, fontsize=18)
+        ax.set_title(f"iteration {step}", pad=24, fontsize=AC_TIMELINE_TITLE_SIZE)
         if idx // n_cols == n_rows - 1:
-            ax.set_xlabel("u", fontsize=17)
+            ax.set_xlabel("u", fontsize=AC_TIMELINE_LABEL_SIZE, labelpad=12)
         if idx % n_cols == 0:
-            ax.set_ylabel("Density", fontsize=17)
+            ax.set_ylabel("Density", fontsize=AC_TIMELINE_LABEL_SIZE, labelpad=16)
         ax.set_xlim(-1.5, 1.5)
         polish_axes(ax, grid=True)
+        ax.tick_params(labelsize=AC_TIMELINE_TICK_SIZE, pad=7)
     for ax in axes[len(steps) :]:
         ax.axis("off")
-    axes[0].legend(frameon=True, loc="upper left", fontsize=16, borderaxespad=0.45)
-    fig.subplots_adjust(left=0.068, right=0.985, bottom=0.115, top=0.895, wspace=0.18, hspace=0.34)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=min(2, len(labels)),
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.025),
+        fontsize=AC_TIMELINE_LEGEND_SIZE,
+    )
+    fig.subplots_adjust(left=0.080, right=0.955, bottom=0.220, top=0.825, wspace=0.28, hspace=0.62)
+    _pin_timeline_top_right_margin(fig)
     display(fig)
     save_figure(fig, stem, caption)
     plt.close(fig)
@@ -971,7 +1012,13 @@ def plot_ac_method_timeline_overlay(
         draw_methods.append("KSWGD")
     n_cols = min(4, len(steps))
     n_rows = int(np.ceil(len(steps) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6.65 * n_cols, 5.20 * n_rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(AC_TIMELINE_OVERLAY_WIDTH_PER_COL * n_cols, AC_TIMELINE_OVERLAY_HEIGHT_PER_ROW * n_rows),
+        sharex=True,
+        sharey=True,
+    )
     axes = np.asarray(axes).ravel()
 
     for idx, (ax, step) in enumerate(zip(axes, steps)):
@@ -981,13 +1028,14 @@ def plot_ac_method_timeline_overlay(
             hist, _ = np.histogram(np.asarray(fields).ravel(), bins=bins, density=True)
             hist = gaussian_filter1d(hist, sigma=2)
             ax.plot(centers, hist, label=method, **AC_METHOD_STYLES.get(method, {"linewidth": 2.2}))
-        ax.set_title(f"iteration {step}", pad=15, fontsize=18)
+        ax.set_title(f"iteration {step}", pad=24, fontsize=AC_TIMELINE_TITLE_SIZE)
         if idx // n_cols == n_rows - 1:
-            ax.set_xlabel("u", fontsize=17)
+            ax.set_xlabel("u", fontsize=AC_TIMELINE_LABEL_SIZE, labelpad=12)
         if idx % n_cols == 0:
-            ax.set_ylabel("Density", fontsize=17)
+            ax.set_ylabel("Density", fontsize=AC_TIMELINE_LABEL_SIZE, labelpad=16)
         ax.set_xlim(-1.5, 1.5)
         polish_axes(ax, grid=True)
+        ax.tick_params(labelsize=AC_TIMELINE_TICK_SIZE, pad=7)
 
     for ax in axes[len(steps) :]:
         ax.axis("off")
@@ -996,8 +1044,17 @@ def plot_ac_method_timeline_overlay(
     legend_order = ["Target", "KSWGD", "ULA", "SVGD", "Matrix SVGD"]
     labels = [label for label in legend_order if label in handle_by_label]
     handles = [handle_by_label[label] for label in labels]
-    fig.legend(handles, labels, loc="lower center", ncol=min(5, len(labels)), frameon=False, bbox_to_anchor=(0.5, 0.020), fontsize=16)
-    fig.subplots_adjust(left=0.068, right=0.985, bottom=0.155, top=0.895, wspace=0.18, hspace=0.34)
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=min(5, len(labels)),
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.020),
+        fontsize=AC_TIMELINE_LEGEND_SIZE,
+    )
+    fig.subplots_adjust(left=0.080, right=0.955, bottom=0.220, top=0.825, wspace=0.28, hspace=0.62)
+    _pin_timeline_top_right_margin(fig)
     display(fig)
     save_figure(fig, stem, caption)
     plt.close(fig)
